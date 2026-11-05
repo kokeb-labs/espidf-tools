@@ -1,0 +1,24 @@
+---
+name: 📚 YAML Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  yamllint:
+    name: YAML Lint
+    uses: kokeb-labs/ci-tools/.github/workflows/ru-yaml-lint.yml@v1
+    permissions:
+      contents: read
+    with:
+      paths: '.github/workflows/*.yml,**/*.yml,**/*.yaml'
+      config_file: '.yamllint'
+      strict_mode: true
+      exclude_patterns: '.git/**,node_modules/**,venv/**,.venv/**,_site/**'
