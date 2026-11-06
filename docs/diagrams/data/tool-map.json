@@ -15,10 +15,12 @@
     "manage_idf.sh",
     "idf_flash_monitor.sh"
   ],
+  "build_app_uses_get_app_info": true,
   "sources": [
     "build_app.sh:source config_loader.sh",
     "flash_app.sh:source config_loader.sh",
     "manage_idf.sh:source config_loader.sh",
-    "idf_flash_monitor.sh:source config_loader.sh"
+    "idf_flash_monitor.sh:source config_loader.sh",
+    "build_app.sh:get_app_info.py"
   ]
 }
