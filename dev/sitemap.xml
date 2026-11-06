@@ -2,70 +2,70 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/app-config/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/build-app/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/ci/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/config-loader/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/flash-app/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/generate-matrix/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/get-app-info/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/manage-idf/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/ports-and-logs/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/project-layout/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/quickstart/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/setup/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/tab-completion/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/testing/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/troubleshooting/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
     <url>
          <loc>https://kokeb-labs.github.io/espidf-tools/latest/diagrams/</loc>
-         <lastmod>2026-11-05</lastmod>
+         <lastmod>2026-11-06</lastmod>
     </url>
 </urlset>
