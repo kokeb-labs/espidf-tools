@@ -8,6 +8,11 @@ the next release a major one.
 
 ## [Unreleased]
 
+### Changed
+
+- The tool map shows the two ways in (a terminal, CI), labels every arrow and points each one from the caller to
+  what it runs or reads.
+
 ## [1.0.0] - 2026-11-05
 
 First release of `kokeb-labs/espidf-tools`.

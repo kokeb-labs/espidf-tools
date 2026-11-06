@@ -13,10 +13,10 @@ Shell and Python scripts that build, flash and monitor every app of a multi-app 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/tool-map.dark.svg">
   <img src="docs/diagrams/tool-map.svg"
-    alt="Diagram: app_config.yml is read by config_loader.sh and by the Python scripts generate_matrix.py and
-    get_app_info.py; build_app.sh, flash_app.sh, manage_idf.sh and idf_flash_monitor.sh use them;
-    build_app.sh runs idf.py into a build folder under builds/; ci-tools calls generate_matrix.py and
-    build_app.sh.">
+    alt="Diagram: you run the commands, or ru-build runs generate_matrix.py and then build_app.sh in CI; the
+    commands load settings through config_loader.sh, build_app.sh asks get_app_info.py for the source
+    file, the commands run idf.py, and config_loader.sh, get_app_info.py and generate_matrix.py all read
+    app_config.yml.">
 </picture>
 <!-- /figure -->
 
