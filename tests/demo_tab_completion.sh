@@ -22,7 +22,7 @@ if complete -p build_app.sh 2>/dev/null | grep -q "_build_app_completion"; then
     COMPREPLY=()
     _build_app_completion
     
-    echo "   First few options: ${COMPREPLY[@]:0:6}..."
+    echo "   First few options: ${COMPREPLY[*]:0:6}..."
     echo "   Total options available: ${#COMPREPLY[@]}"
 else
     echo "   ❌ Tab completion not yet loaded"

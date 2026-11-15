@@ -269,7 +269,7 @@ load_config_yq() {
 # Uses section-based parsing instead of fixed -A context to reach fields deep in YAML structure
 _get_metadata_section() {
     # Extract from ^metadata: to next top-level key (line starting at column 0, e.g. apps: or build_config:)
-    sed -n '/^metadata:/,/^[a-z_][a-z0-9_]*:/p' "$CONFIG_FILE" | head -n -1
+    sed -n '/^metadata:/,/^[a-z_][a-z0-9_]*:/p' "$CONFIG_FILE" | sed '$d'
 }
 
 # Parse YAML array from section - handles both inline [a,b,c] and multiline - item format
@@ -289,7 +289,7 @@ _parse_yaml_array() {
     local multiline_section=$(echo "$section" | sed -n "/^ *${key}:/,/^ *[a-z_][a-z0-9_]*:/p")
     # Only strip last line if it's a boundary (next key), not content
     if echo "$multiline_section" | tail -1 | grep -q "^ *[a-z_][a-z0-9_]*:"; then
-        multiline_section=$(echo "$multiline_section" | head -n -1)
+        multiline_section=$(echo "$multiline_section" | sed '$d')
     fi
     # sed 's/.*- *//' gets content after last "- " on line (handles both "- X" and "- - X")
     echo "$multiline_section" | grep " - " | sed 's/.*- *//' | sed 's/"//g' | tr '\n' ' '
@@ -339,7 +339,7 @@ get_build_types() {
             fi
         else
             # Fallback: extract from apps section (support inline and multiline)
-            local app_section=$(sed -n "/^  $app_type:/,/^  [a-zA-Z0-9_]*:/p" "$CONFIG_FILE" | head -n -1)
+            local app_section=$(sed -n "/^  $app_type:/,/^  [a-zA-Z0-9_]*:/p" "$CONFIG_FILE" | sed '$d')
             local app_build_types="$(_parse_yaml_array "$app_section" "build_types")"
             if [[ -n "$app_build_types" ]]; then
                 # Flatten nested arrays (e.g. "Debug Release" from nested) and clean
@@ -397,7 +397,7 @@ get_build_types_for_idf_version() {
                     found=true
                     break
                 fi
-                ((index++))
+                index=$((index + 1))
             done < <(echo "$idf_content" | tr ' ' '\n')
             
             if [[ "$found" == "true" ]]; then
@@ -455,7 +455,7 @@ get_idf_version_index() {
                     echo "$index"
                     return 0
                 fi
-                ((index++))
+                index=$((index + 1))
             done < <(echo "$idf_content" | tr ' ' '\n')
         fi
         echo "ERROR: IDF version $idf_version not found" >&2
@@ -530,7 +530,7 @@ get_app_build_types_for_idf_version() {
                             found=true
                             break
                         fi
-                        ((index++))
+                        index=$((index + 1))
                     done < <(echo "$app_idf_content" | tr ' ' '\n')
                     
                     if [[ "$found" == "true" ]]; then
@@ -567,7 +567,7 @@ get_app_build_types_for_idf_version() {
                     found=true
                     break
                 fi
-                ((index++))
+                index=$((index + 1))
             done < <(echo "$global_idf_content" | tr ' ' '\n')
             
             if [[ "$found" == "true" ]]; then
