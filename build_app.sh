@@ -30,7 +30,7 @@ while [[ $i -le $# ]]; do
 			next_index=$((i+1))
 			if [[ $next_index -le $# ]] && [[ "${!next_index}" != -* ]]; then
 				PROJECT_PATH="${!next_index}"
-				((i++))  # Skip the next argument since we consumed it
+				i=$((i + 1))  # Skip the next argument since we consumed it
 			else
 				echo "ERROR: --project-path requires a path argument" >&2
 				echo "Usage: --project-path /path/to/project" >&2
@@ -42,7 +42,7 @@ while [[ $i -le $# ]]; do
 			next_index=$((i+1))
 			if [[ $next_index -le $# ]] && [[ "${!next_index}" != -* ]]; then
 				PAIRING_SECRET_ARG="${!next_index}"
-				((i++))  # Skip the next argument since we consumed it
+				i=$((i + 1))  # Skip the next argument since we consumed it
 			else
 				echo "ERROR: --secret requires a 32-character hex string" >&2
 				echo "Usage: --secret <32_hex_chars>" >&2
@@ -57,7 +57,7 @@ while [[ $i -le $# ]]; do
 			POSITIONAL_ARGS+=("$arg")
 			;;
 	esac
-	((i++))
+	i=$((i + 1))
 done
 
 # Export PROJECT_PATH if it was set via --project-path flag
@@ -319,6 +319,18 @@ if [ -z "$IDF_PATH" ] || ! command -v idf.py &> /dev/null; then
         echo "To manually install required versions, run: ./scripts/setup_repo.sh"
         exit 1
     fi
+fi
+
+# The exported ESP-IDF must be the version asked for: a build folder named after one version is never built with
+# another. Compared on major.minor (release/v6.1, v6.1.2); refs without a version (master) are not checked.
+source "$SCRIPT_DIR/setup_common.sh"
+EXPORTED_IDF_MM=$(idf_dir_major_minor "$IDF_PATH" 2>/dev/null || true)
+WANTED_IDF_MM=$(idf_major_minor "$IDF_VERSION")
+if [ -n "$EXPORTED_IDF_MM" ] && [ -n "$WANTED_IDF_MM" ] && [ "$EXPORTED_IDF_MM" != "$WANTED_IDF_MM" ]; then
+    echo "ERROR: the exported ESP-IDF ($IDF_PATH) is v$EXPORTED_IDF_MM, but $IDF_VERSION was asked for"
+    echo "  Open a new shell (or unset IDF_PATH) and build again: build_app.sh then exports $IDF_VERSION itself"
+    echo "  Or export it yourself: . $(esp_idf_dir_for_version "$IDF_VERSION")/export.sh"
+    exit 1
 fi
 
 # Ensure target is set from config

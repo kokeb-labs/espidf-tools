@@ -7,6 +7,7 @@ type.
 python3 scripts/generate_matrix.py                         # JSON on stdout
 python3 scripts/generate_matrix.py --validate --verbose    # check the file first
 python3 scripts/generate_matrix.py --filter gpio_test --format yaml
+python3 scripts/generate_matrix.py --ci-scope pr                # what a pull request builds
 ```
 
 ## Options
@@ -21,6 +22,7 @@ python3 scripts/generate_matrix.py --filter gpio_test --format yaml
 | `--verbose` / `-v` | flag | - | Verbose output |
 | `--validate` | flag | - | Validate configuration |
 | `--project-path` / `-p` | value | - | Path to project directory containing app_config.yml |
+| `--ci-scope` | `pr`, `full`, `all`, `auto` | `all` | Versions per app: pr (the ci: pr one of idf_versions.yml), full/all (every one), auto (from GITHUB_EVENT_NAME and GITHUB_REF) |
 <!-- /generated -->
 
 Without `--project-path` the script looks for `examples/esp32/app_config.yml`, `app_config.yml`,
@@ -31,7 +33,8 @@ Without `--project-path` the script looks for `examples/esp32/app_config.yml`, `
 
 ```json
 {"include": [
-  {"idf_version": "release/v5.5", "idf_version_docker": "release-v5.5", "idf_version_file": "release_v5_5",
+  {"idf_version": "release/v5.5", "idf_ref": "release/v5.5", "idf_status": "maintenance",
+   "idf_version_docker": "release-v5.5", "idf_version_file": "release_v5_5",
    "build_type": "Debug", "app_name": "gpio_test", "target": "esp32c6", "config_source": "global"}
 ]}
 ```
@@ -39,6 +42,8 @@ Without `--project-path` the script looks for `examples/esp32/app_config.yml`, `
 | Field | Meaning |
 | --- | --- |
 | `idf_version` | As written in `app_config.yml`; passed to `build_app.sh` |
+| `idf_ref` | The git ref to clone: the version's `ref` in [idf_versions.yml](idf-versions.md), else `idf_version` |
+| `idf_status` | `service`, `maintenance`, `eol` or `preview` from `idf_versions.yml`; `unknown` for a version it does not list |
 | `idf_version_docker` | `/` replaced by `-`: the `espressif/idf` image tag and the artifact name |
 | `idf_version_file` | `/` and `.` replaced by `_`: the build folder suffix |
 | `build_type`, `app_name`, `target` | The combination |
@@ -50,10 +55,15 @@ Without `--project-path` the script looks for `examples/esp32/app_config.yml`, `
 2. Each app uses its own `idf_versions`, or `metadata.idf_versions`.
 3. Build types: the app's flat `build_types` list for every version; or its nested list by position; or
    `metadata.build_types` by position; `Debug` and `Release` when a position has no list.
-4. `metadata.target`, default `esp32c6`.
-5. Entries matching an item of `ci_config.exclude_combinations` on every key are dropped.
+4. `--ci-scope pr` keeps, per app, only its version with `ci: pr` in `idf_versions.yml`, else its first version;
+   `full` and `all` (the default) keep every version; `auto` is `pr` on pull requests and branch pushes and
+   `full` on tags, schedules and manual runs (from `GITHUB_EVENT_NAME` and `GITHUB_REF`).
+5. `metadata.target`, default `esp32c6`. A version of `idf_versions.yml` that supports the target neither as
+   stable nor as preview is dropped for that app, with a warning on standard error.
+6. Entries matching an item of `ci_config.exclude_combinations` on every key are dropped.
 
 `--validate` fails on a missing `metadata` or `apps` section, an empty `apps`, or `build_types` / `idf_versions`
-that are not lists of strings, and warns on missing defaults, descriptions or source files. `--validate` and
+that are not lists of strings, and warns on missing defaults, descriptions or source files and on ESP-IDF
+versions `idf_versions.yml` does not list. `--validate` and
 `--verbose` print their messages on standard output before the matrix, so leave them out where the output is
 parsed as JSON (use `--output` to write the matrix to a file instead).

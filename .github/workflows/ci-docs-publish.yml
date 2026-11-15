@@ -47,7 +47,7 @@ jobs:
           fi
           changed="$(git diff --name-only "$BASE_SHA" HEAD)"
           echo "$changed"
-          if echo "$changed" | grep -qE '\.(sh|py)$|^tests/|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.(sh|py)$|^idf_versions\.yml$|^tests/|^\.github/workflows/'; then
             echo "scripts=true" >> "$GITHUB_OUTPUT"
           else
             echo "scripts=false" >> "$GITHUB_OUTPUT"

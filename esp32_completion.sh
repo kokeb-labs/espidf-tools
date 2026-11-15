@@ -48,7 +48,7 @@ _esp32_auto_setup
 _get_script_dir() {
     local script_path="$1"
     if [[ -x "$script_path" ]]; then
-        dirname "$(readlink -f "$script_path")"
+        dirname "$(readlink -f "$script_path" 2>/dev/null || echo "$script_path")"
     else
         # Fallback: look for scripts in current directory or ../scripts
         if [[ -f "./scripts/build_app.sh" ]]; then
@@ -96,6 +96,12 @@ _get_build_app_types() {
         echo "help"
         echo "list"
     fi
+}
+
+# ESP-IDF versions from idf_versions.yml next to the scripts (one `- {version: ...}` line each)
+_get_idf_versions() {
+    local script_dir="$1"
+    sed -n 's/^ *- *{ *version: *\([^,} ]*\).*/\1/p' "$script_dir/idf_versions.yml" 2>/dev/null
 }
 
 _get_build_types() {
@@ -172,7 +178,7 @@ _build_app_completion() {
             ;;
         --idf-version)
             # Complete with IDF versions (if available)
-            COMPREPLY=($(compgen -W "v5.1 v5.0 v4.4" -- "$cur"))
+            COMPREPLY=($(compgen -W "$(_get_idf_versions "$script_dir")" -- "$cur"))
             return 0
             ;;
     esac
@@ -192,11 +198,11 @@ _build_app_completion() {
             --*) 
                 # Skip flags and their arguments
                 if [[ "${COMP_WORDS[i]}" == "--project-path" ]]; then
-                    ((i++)) # Skip the path argument
+                    i=$((i + 1)) # Skip the path argument
                 fi
                 ;;
             *)
-                ((pos++))
+                pos=$((pos + 1))
                 ;;
         esac
     done
@@ -241,7 +247,7 @@ _build_app_completion() {
         3)
             # Fourth argument: for validate command, this is IDF version
             if [[ "${COMP_WORDS[1]}" == "validate" ]]; then
-                COMPREPLY=($(compgen -W "v5.1 v5.0 v4.4" -- "$cur"))
+                COMPREPLY=($(compgen -W "$(_get_idf_versions "$script_dir")" -- "$cur"))
             fi
             ;;
     esac
@@ -294,12 +300,12 @@ _flash_app_completion() {
                 # Skip flags and their arguments
                 case "${COMP_WORDS[i]}" in
                     --project-path|--port|-p|--baud|--log)
-                        ((i++)) # Skip the flag argument
+                        i=$((i + 1)) # Skip the flag argument
                         ;;
                 esac
                 ;;
             *)
-                ((pos++))
+                pos=$((pos + 1))
                 ;;
         esac
     done
@@ -345,13 +351,13 @@ _flash_app_completion() {
                     ;;
                 *)
                     # After app and build type, complete with IDF versions
-                    COMPREPLY=($(compgen -W "v5.1 v5.0 v4.4" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_get_idf_versions "$script_dir")" -- "$cur"))
                     ;;
             esac
             ;;
         3)
             # Fourth argument: usually IDF version
-            COMPREPLY=($(compgen -W "v5.1 v5.0 v4.4" -- "$cur"))
+            COMPREPLY=($(compgen -W "$(_get_idf_versions "$script_dir")" -- "$cur"))
             ;;
     esac
 }

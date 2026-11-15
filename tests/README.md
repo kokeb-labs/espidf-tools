@@ -5,8 +5,9 @@ This directory contains test scripts and utilities for validating the ESP32 buil
 ## Test Scripts
 
 ### `test_scripts.sh`
-Behaviour tests for `manage_idf.sh`, `manage_logs.sh`, `config_loader.sh` and `get_app_info.py`. Needs only
-bash (3.2 or later); the `get_app_info.py` tests also need `python3` with PyYAML. Runs in CI on Ubuntu and macOS
+Behaviour tests for `manage_idf.sh` (against a fake `git`), `idf_versions.py`, `generate_matrix.py`,
+`manage_logs.sh`, `config_loader.sh` and `get_app_info.py`. Needs only bash (3.2 or later) and `python3`; the
+`get_app_info.py` and `generate_matrix.py` tests also need PyYAML. Runs in CI on Ubuntu and macOS
 (`.github/workflows/script-tests.yml`, called by `ci-docs-publish.yml` and required by its CI gate).
 
 **Usage:**

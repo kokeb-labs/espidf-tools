@@ -11,6 +11,9 @@ import json
 import argparse
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import idf_versions as idfv  # noqa: E402 - next to this script
+
 def show_help():
     """Show comprehensive help information."""
     print("ESP32 CI Matrix Generator")
@@ -25,6 +28,9 @@ def show_help():
     print("  --verbose                   - Show detailed processing information")
     print("  --validate                  - Validate configuration before generating matrix")
     print("  --project-path <path>       - Path to project directory containing app_config.yml")
+    print("  --ci-scope <scope>          - pr: per app only the ci: pr version of idf_versions.yml (else its")
+    print("                                first); full/all: every version (default all); auto: pr on pull")
+    print("                                requests and branch pushes, full on tags, schedules, manual runs")
     print("")
     print("PURPOSE:")
     print("  Generate CI matrix from centralized configuration for GitHub Actions")
@@ -66,7 +72,7 @@ def show_help():
     print("OUTPUT FORMAT:")
     print("  • JSON: Standard GitHub Actions matrix format")
     print("  • YAML: Alternative format for other CI systems")
-    print("  • Structure: idf_version, build_type, app_name, target, config_source")
+    print("  • Structure: idf_version, idf_ref, idf_status, build_type, app_name, target, config_source")
     print("")
     print("CONFIGURATION FILE:")
     print("  • Location: examples/esp32/app_config.yml")
@@ -111,6 +117,9 @@ def parse_arguments():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--validate", action="store_true", help="Validate configuration")
     parser.add_argument("--project-path", "-p", help="Path to project directory containing app_config.yml")
+    parser.add_argument("--ci-scope", choices=["pr", "full", "all", "auto"], default="all",
+                        help="Versions per app: pr (the ci: pr one of idf_versions.yml), full/all (every one), "
+                             "auto (from GITHUB_EVENT_NAME and GITHUB_REF)")
     
     args = parser.parse_args()
     
@@ -164,17 +173,52 @@ def load_config(project_path=None):
         print(f"Error loading configuration: {e}", file=sys.stderr)
         sys.exit(1)
 
-def generate_matrix(project_path=None):
+def load_known_versions():
+    """The entries of idf_versions.yml; an empty list (with a warning) when it cannot be read."""
+    try:
+        return idfv.load()
+    except idfv.VersionsError as exc:
+        print(f"Warning: {exc}; ESP-IDF versions are not checked", file=sys.stderr)
+        return []
+
+
+def expand_versions(versions):
+    """(version, position) pairs; the position picks the nested build_types list."""
+    return [(v, i) for i, v in enumerate(versions)]
+
+
+def select_for_scope(pairs, known, scope):
+    """pr: the app's versions with ci: pr, else its first; full and all: every one."""
+    if scope in ("full", "all") or not pairs:
+        return pairs
+    picked = [(v, i) for v, i in pairs
+              if (idfv.find(known, v) or {}).get("ci") == "pr"]
+    return picked or pairs[:1]
+
+
+def generate_matrix(project_path=None, ci_scope="all"):
     """Generate CI matrix from configuration with hierarchical overrides."""
     config = load_config(project_path)
-    
+    known = load_known_versions()
+    if ci_scope == "auto":
+        import os  # noqa: PLC0415
+        ci_scope = idfv.scope_for_event(os.environ.get("GITHUB_EVENT_NAME", ""),
+                                                os.environ.get("GITHUB_REF", ""))
+    warned = set()
+
+    def warn_once(message):
+        if message not in warned:
+            warned.add(message)
+            print(f"Warning: {message}", file=sys.stderr)
+
     # Global defaults from metadata
-    global_idf_versions = config['metadata'].get('idf_versions', ['release/v5.5'])
+    global_idf_versions = config['metadata'].get('idf_versions', [idfv.default_version(known)
+                                                                  or 'release/v5.5'])
     global_build_types_per_idf = config['metadata'].get('build_types', [['Debug', 'Release']])
     
     # Create a mapping from IDF version to its allowed build types
     idf_to_build_types = {}
-    for i, idf_version in enumerate(global_idf_versions):
+    for idf_version, i in expand_versions(global_idf_versions):
         if i < len(global_build_types_per_idf):
             idf_to_build_types[idf_version] = global_build_types_per_idf[i]
         else:
@@ -199,10 +243,11 @@ def generate_matrix(project_path=None):
         
         # Per-app overrides (app-specific settings take precedence)
         per_app_idf_versions = app_config.get('idf_versions', global_idf_versions)
+        pairs = select_for_scope(expand_versions(per_app_idf_versions), known, ci_scope)
         
         # For each IDF version, determine the allowed build types
         effective_combinations = []
-        for i, idf_version in enumerate(per_app_idf_versions):
+        for idf_version, i in pairs:
             if 'build_types' in app_config:
                 # App has specific build type requirements
                 app_build_types = app_config['build_types']
@@ -229,18 +274,30 @@ def generate_matrix(project_path=None):
                     effective_combinations.append((idf_version, build_type))
         
         # Generate matrix entries for this app
+        target = config['metadata'].get('target', 'esp32c6')
         for idf_version, build_type in effective_combinations:
+            entry = idfv.find(known, idf_version) if known else None
+            if known and entry is None:
+                warn_once(f"{idf_version} is not in idf_versions.yml: built as a git ref, target unchecked")
+            elif entry is not None:
+                if entry.get("status") == "eol":
+                    warn_once(f"{idf_version} is end of life")
+                if target not in (entry["targets"] or []) + (entry["preview"] or []):
+                    warn_once(f"{target} is not a target of {idf_version}: {app_name} skipped for it")
+                    continue
             # Create Docker-safe version for artifact naming (replace / with -)
             docker_safe_version = idf_version.replace('/', '-')
             # Create file-safe version for build directories (replace / and . with _)
             file_safe_version = idf_version.replace('/', '_').replace('.', '_')
             candidate = {
-                'idf_version': idf_version,  # Git format for ESP-IDF cloning
+                'idf_version': idf_version,  # As in app_config.yml: build folders, build_app.sh
+                'idf_ref': idfv.ref_for(known, idf_version),  # Git ref to clone
+                'idf_status': entry['status'] if entry else 'unknown',  # Support period
                 'idf_version_docker': docker_safe_version,  # Docker-safe format for artifacts
                 'idf_version_file': file_safe_version,  # File-safe format for build directories
                 'build_type': build_type,
                 'app_name': app_name,  # Use app_name for consistency
-                'target': config['metadata'].get('target', 'esp32c6'),  # Target from config
+                'target': target,  # Target from config
                 'config_source': 'app' if ('build_types' in app_config or 'idf_versions' in app_config) else 'global'
             }
             if not is_excluded(candidate):
@@ -308,6 +365,16 @@ def validate_config(config):
                 elif not all(isinstance(v, str) for v in idf_versions):
                     errors.append(f"App '{app_name}' idf_versions contains non-string values")
     
+    # ESP-IDF versions idf_versions.yml does not know (a tag or master is allowed, but unchecked)
+    known = load_known_versions()
+    if known:
+        listed = list(metadata.get('idf_versions') or [])
+        for app_config in config['apps'].values():
+            listed += list(app_config.get('idf_versions') or [])
+        for v in sorted(set(listed)):
+            if idfv.find(known, v) is None:
+                warnings.append(f"ESP-IDF version '{v}' is not in idf_versions.yml")
+
     # Validate ci_config if present
     if 'ci_config' in config:
         ci_config = config['ci_config']
@@ -359,7 +426,7 @@ def main():
     if args.verbose:
         print("Generating CI matrix...")
     
-    matrix_config = generate_matrix(args.project_path)
+    matrix_config = generate_matrix(args.project_path, args.ci_scope)
     
     if args.verbose:
         print(f"Matrix entries: {len(matrix_config['include'])}")

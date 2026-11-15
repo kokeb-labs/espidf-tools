@@ -8,6 +8,30 @@ the next release a major one.
 
 ## [Unreleased]
 
+### Added
+
+- `idf_versions.yml`: every ESP-IDF version the scripts know, one line each (git ref, stable and preview chips,
+  support status, release date, CI use), and `idf_versions.py` to list, query, check it and turn it into a
+  GitHub Actions matrix. Adding a version is one line.
+- `manage_idf.sh available`, `verify` and `uninstall` (`clean` stays as the same command); `install` takes
+  versions, `--targets`, `--shallow`; `uninstall --python-env`; `ESP_IDF_ROOT` and `ESP_IDF_GIT_URL`.
+- `generate_matrix.py --ci-scope pr|full|all|auto`: one ESP-IDF version per app on pull requests and branch
+  pushes, every version on tags, schedules and manual runs. Matrix rows gain `idf_ref` and `idf_status`, and a
+  version that does not support `metadata.target` is dropped with a warning.
+- `build_app.sh` stops when the exported ESP-IDF is another major.minor than the version asked for, so a build
+  folder named for one version is never built with another.
+- Tests for all of the above, and a check that no script uses bash 4, BSD-incompatible or `set -e`-unsafe
+  constructs.
+
+### Fixed
+
+- `manage_idf.sh --project-path` failed with "bad substitution" on every bash (`${!((i+1))}`).
+- `manage_idf.sh install <version>` ignored the version, and `install` and `update` installed the tools for
+  esp32c6 whatever `metadata.target` said.
+- `config_loader.sh` without yq used `head -n -1`, which BSD `head` (macOS) rejects, and `((index++))`, which
+  stops a `set -e` script when the index is 0; the same increments are gone from the other scripts.
+- The tab completion offered ESP-IDF v5.1, v5.0 and v4.4; it now offers the versions of `idf_versions.yml`.
+
 ### Changed
 
 - The tool map shows the two ways in (a terminal, CI), labels every arrow and points each one from the caller to

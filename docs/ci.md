@@ -5,7 +5,7 @@ How GitHub Actions builds every app with these scripts, through the reusable wor
 [ci-tools](https://kokeb-labs.github.io/ci-tools/) `ru-build.yml` runs, for a caller that pins
 `@v1`:
 
-1. `generate_matrix.py` (no arguments) for the matrix;
+1. `generate_matrix.py` for the matrix, with `--ci-scope auto` when the scripts have it (see below);
 2. for each entry, inside the `espressif/idf:<idf_version_docker>` image,
    `build_app.sh --project-path <project_dir> <app> <build_type> <idf_version>`;
 3. an upload of `<project_dir>/build*` (the `builds/` folder) as `fw-<app>-<idf>-<build type>`;
@@ -30,6 +30,31 @@ jobs:
 
 Inputs, permissions and failure modes are on the
 [ru-build page](https://kokeb-labs.github.io/ci-tools/latest/ru-build/).
+
+## Which ESP-IDF versions a run builds
+
+List every version an app supports in `app_config.yml`; [idf_versions.yml](idf-versions.md) decides how many a
+run builds, so CI minutes stay low without editing each project:
+
+| Run | Scope | ESP-IDF versions per app |
+| --- | --- | --- |
+| Pull request, push to a branch | `pr` | the one with `ci: pr` (else the app's first) |
+| Tag, weekly schedule, manual run | `full` | every version the app lists |
+
+A project that wants the full set on a schedule adds one to its caller workflow:
+
+```yaml
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # Mondays 03:17 UTC
+```
+
+To see what each kind of run builds:
+
+```bash
+python3 examples/esp32/scripts/generate_matrix.py --project-path examples/esp32 --ci-scope pr
+python3 examples/esp32/scripts/generate_matrix.py --project-path examples/esp32 --ci-scope full
+```
 
 ## Keep the matrix and the build on the same file
 

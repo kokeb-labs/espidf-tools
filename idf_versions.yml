@@ -1,0 +1,37 @@
+---
+# The ESP-IDF versions these scripts know, read by manage_idf.sh, generate_matrix.py, idf_versions.py and the tab
+# completion. Adding a version is one line under `versions:`; see docs/idf-versions.md.
+#
+# Format rules (idf_versions.py check enforces them, and reads the file without PyYAML too):
+#   - one version per line, as a flow mapping `- {key: value, ...}`, newest first;
+#   - target sets are one line each, `name: [target, ...]`;
+#   - dates are quoted.
+#
+# Version keys:
+#   version   the name app_config.yml, build folders and `manage_idf.sh` use (a release branch or a tag)
+#   ref       the git branch or tag cloned; default: version
+#   status    service | maintenance | eol | preview  (Espressif support periods: 12 months of service, then 18 of
+#             maintenance, then end of life, from the x.y.0 release date)
+#   ci        pr   built on every CI run (pull requests, pushes, tags, schedules); keep exactly one
+#             full built on tags, schedules and manual runs only
+#             none never built by CI
+#   targets   name of a target set below: the chips the version supports as stable
+#   preview   name of a target set below: the chips the version supports as preview (optional)
+#   released  the x.y.0 release date, "YYYY-MM-DD"
+#
+# Sources: https://github.com/espressif/esp-idf/blob/master/SUPPORT_POLICY.md (periods),
+# https://github.com/espressif/esp-idf/releases (dates), tools/idf_py_actions/constants.py of each tag (targets).
+
+target_sets:
+  v5.3: [esp32, esp32s2, esp32s3, esp32c2, esp32c3, esp32c6, esp32h2, esp32p4]
+  v5.3-pre: [esp32c5, esp32c61]
+  v5.5: [esp32, esp32s2, esp32s3, esp32c2, esp32c3, esp32c5, esp32c6, esp32c61, esp32h2, esp32p4]
+  v5.5-pre: [esp32h21, esp32h4]
+  v6.1-pre: [esp32h21, esp32h4, esp32s31]
+
+versions:
+  - {version: release/v6.1, status: service, ci: full, targets: v5.5, preview: v6.1-pre, released: "2026-08-27"}
+  - {version: release/v6.0, status: service, ci: none, targets: v5.5, preview: v5.5-pre, released: "2026-03-20"}
+  - {version: release/v5.5, status: maintenance, ci: pr, targets: v5.5, preview: v5.5-pre, released: "2025-07-21"}
+  - {version: release/v5.4, status: maintenance, ci: none, targets: v5.3, preview: v5.3-pre, released: "2025-01-04"}
+  - {version: release/v5.3, status: maintenance, ci: none, targets: v5.3, preview: v5.3-pre, released: "2024-07-25"}

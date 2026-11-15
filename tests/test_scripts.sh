@@ -214,6 +214,291 @@ test_idf_help_exits_0() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# manage_idf.sh: options, the versions file, install / verify / uninstall with a fake git
+# ---------------------------------------------------------------------------------------------------------------
+
+# A fake git on the PATH: `clone` makes a checkout whose tools/cmake/version.cmake matches the ref, with an
+# install.sh and an export.sh that log what they were called with; `-C <dir> describe` answers the ref.
+make_fake_git() {
+    local bin="$1"
+    mkdir -p "$bin"
+    cat > "$bin/git" <<'EOF'
+#!/bin/bash
+log="${FAKE_GIT_LOG:?}"
+if [ "$1" = "-C" ]; then
+    echo "fake-describe"
+    exit 0
+fi
+if [ "$1" != "clone" ]; then
+    echo "git $*" >> "$log"
+    exit 0
+fi
+echo "git $*" >> "$log"
+ref=""
+prev=""
+for a in "$@"; do
+    [ "$prev" = "--branch" ] && ref="$a"
+    prev="$a"
+    dir="$a"
+done
+mm=$(echo "$ref" | sed -n 's/.*v\([0-9]*\)\.\([0-9]*\).*/\1 \2/p')
+set -- $mm
+mkdir -p "$dir/tools/cmake" "$dir/bin"
+printf 'set(IDF_VERSION_MAJOR %s)\nset(IDF_VERSION_MINOR %s)\nset(IDF_VERSION_PATCH 0)\n' "${1:-0}" "${2:-0}" \
+    > "$dir/tools/cmake/version.cmake"
+printf '#!/bin/bash\necho "install.sh $*" >> "%s"\n' "$log" > "$dir/install.sh"
+printf '#!/bin/bash\necho "ESP-IDF v%s.%s-fake"\n' "${1:-0}" "${2:-0}" > "$dir/bin/idf.py"
+printf 'export PATH="%s/bin:$PATH"\n' "$dir" > "$dir/export.sh"
+chmod +x "$dir/install.sh" "$dir/bin/idf.py"
+EOF
+    chmod +x "$bin/git"
+}
+
+test_idf_project_path_option_bash32() {
+    # ${!((i+1))} is a syntax error in every bash; the option must work on the bash 3.2 of macOS.
+    export HOME="$TEST_TMP"
+    make_project "$TEST_TMP/proj"
+    mkdir -p "$HOME/esp/esp-idf-release-v5.5"
+    local out
+    out=$(/bin/bash "$ROOT/manage_idf.sh" --project-path "$TEST_TMP/proj" switch release/v5.5 2>&1) \
+        || fail "switch with --project-path failed: $out" || return 1
+    assert_not_contains "$out" "bad substitution" || return 1
+    assert_eq "$(readlink "$HOME/esp/esp-idf")" "$HOME/esp/esp-idf-release-v5.5"
+}
+
+test_idf_option_without_value_fails_cleanly() {
+    export HOME="$TEST_TMP"
+    local out status=0
+    out=$(/bin/bash "$ROOT/manage_idf.sh" list --project-path 2>&1) || status=$?
+    assert_eq "$status" "1" || return 1
+    assert_contains "$out" "--project-path requires a value" || return 1
+    assert_not_contains "$out" "bad substitution"
+}
+
+test_idf_available_lists_versions_file() {
+    export HOME="$TEST_TMP"
+    mkdir -p "$HOME/esp/esp-idf-release-v5.5"
+    local out v
+    out=$("$ROOT/manage_idf.sh" available 2>&1) || fail "available failed: $out" || return 1
+    for v in $(python3 "$ROOT/idf_versions.py" list --format names); do
+        assert_contains "$out" "$v" || return 1
+    done
+    assert_contains "$out" "* release/v5.5" || return 1
+    assert_contains "$out" "  release/v6.1"
+}
+
+test_idf_install_explicit_version_shallow_with_targets() {
+    export HOME="$TEST_TMP"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    local out
+    out=$(PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install release/v6.1 --shallow \
+        --targets esp32c6,esp32s3 2>&1) || fail "install failed: $out" || return 1
+    local log
+    log=$(cat "$FAKE_GIT_LOG")
+    assert_contains "$log" "--branch release/v6.1" || return 1
+    assert_contains "$log" "--depth 1 --shallow-submodules" || return 1
+    assert_contains "$log" "https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf-release-v6.1" || return 1
+    assert_contains "$log" "install.sh esp32c6,esp32s3" || return 1
+    # No default yet: the first install becomes it.
+    assert_eq "$(readlink "$HOME/esp/esp-idf")" "$HOME/esp/esp-idf-release-v6.1"
+}
+
+test_idf_install_from_app_config_uses_its_target() {
+    export HOME="$TEST_TMP"
+    make_project "$TEST_TMP/proj"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    local out
+    out=$(PATH="$TEST_TMP/bin:$PATH" "$TEST_TMP/proj/scripts/manage_idf.sh" install 2>&1) \
+        || fail "install failed: $out" || return 1
+    local log
+    log=$(cat "$FAKE_GIT_LOG")
+    assert_contains "$log" "--branch release/v5.5" || return 1
+    assert_contains "$log" "--branch release/v5.4" || return 1
+    assert_not_contains "$log" "--depth" || return 1
+    assert_contains "$log" "install.sh esp32c6" || return 1
+    assert_eq "$(readlink "$HOME/esp/esp-idf")" "$HOME/esp/esp-idf-release-v5.5"
+}
+
+test_idf_install_warns_unknown_version_and_target() {
+    export HOME="$TEST_TMP"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    local out
+    out=$(PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install v9.9.9 2>&1) || fail "install failed: $out" || return 1
+    assert_contains "$out" "v9.9.9 is not in idf_versions.yml" || return 1
+    out=$(PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install release/v5.4 --targets esp32s31 2>&1) \
+        || fail "install failed: $out" || return 1
+    assert_contains "$out" "esp32s31 is not a target of release/v5.4"
+}
+
+test_idf_install_with_esp_idf_root() {
+    export HOME="$TEST_TMP"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    local out
+    out=$(PATH="$TEST_TMP/bin:$PATH" ESP_IDF_ROOT="$TEST_TMP/elsewhere" "$ROOT/manage_idf.sh" install release/v6.0 2>&1) \
+        || fail "install failed: $out" || return 1
+    [ -d "$TEST_TMP/elsewhere/esp-idf-release-v6.0" ] || fail "not installed under ESP_IDF_ROOT" || return 1
+    [ ! -e "$HOME/esp" ] || fail "$HOME/esp was used"
+}
+
+test_idf_verify_ok_and_mismatch() {
+    export HOME="$TEST_TMP"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install release/v6.1 >/dev/null 2>&1 || fail "install" || return 1
+    local out
+    out=$(PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" verify release/v6.1 2>&1) || fail "verify failed: $out" || return 1
+    assert_contains "$out" "sources are ESP-IDF 6.1" || return 1
+    assert_contains "$out" "ESP-IDF release/v6.1: OK" || return 1
+    # A folder holding another version than its name says
+    sed -i.bak 's/MINOR 1/MINOR 0/' "$HOME/esp/esp-idf-release-v6.1/tools/cmake/version.cmake"
+    if out=$(PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" verify release/v6.1 2>&1); then
+        fail "verify of a mismatched folder succeeded"
+        return 1
+    fi
+    assert_contains "$out" "sources are ESP-IDF 6.0, not 6.1"
+}
+
+test_idf_uninstall_python_env() {
+    export HOME="$TEST_TMP"
+    export IDF_TOOLS_PATH="$TEST_TMP/tools"
+    make_fake_git "$TEST_TMP/bin"
+    export FAKE_GIT_LOG="$TEST_TMP/git.log"
+    PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install release/v5.5 >/dev/null 2>&1 || fail "install" || return 1
+    PATH="$TEST_TMP/bin:$PATH" "$ROOT/manage_idf.sh" install release/v6.1 >/dev/null 2>&1 || fail "install" || return 1
+    mkdir -p "$IDF_TOOLS_PATH/python_env/idf6.1_py3.12_env" "$IDF_TOOLS_PATH/python_env/idf5.5_py3.12_env"
+    local out
+    out=$("$ROOT/manage_idf.sh" uninstall release/v6.1 --python-env 2>&1) || fail "uninstall failed: $out" || return 1
+    [ ! -d "$HOME/esp/esp-idf-release-v6.1" ] || fail "checkout still there" || return 1
+    [ ! -d "$IDF_TOOLS_PATH/python_env/idf6.1_py3.12_env" ] || fail "6.1 Python env still there" || return 1
+    [ -d "$IDF_TOOLS_PATH/python_env/idf5.5_py3.12_env" ] || fail "5.5 Python env removed"
+}
+
+test_idf_helpers_major_minor() {
+    local out
+    out=$(bash -c 'source "$1/setup_common.sh"
+        idf_major_minor release/v6.1; idf_major_minor v6.0.3; idf_major_minor v5.5-rc1; idf_major_minor master
+        echo "ref:$(idf_ref_for_version release/v5.5) $(idf_ref_for_version v6.0.3) $(idf_ref_for_version master)"
+        echo "default:$(idf_default_version)"' _ "$ROOT" 2>&1)
+    assert_eq "$out" "6.1
+6.0
+5.5
+ref:release/v5.5 v6.0.3 master
+default:$(python3 "$ROOT/idf_versions.py" default)"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# idf_versions.py and generate_matrix.py --ci-scope
+# ---------------------------------------------------------------------------------------------------------------
+
+test_versions_file_checks_clean() {
+    local out
+    out=$(python3 "$ROOT/idf_versions.py" check 2>&1) || fail "check failed: $out" || return 1
+    # Both readers: the one-line reader alone must give the same as PyYAML (when installed).
+    local a b
+    a=$(IDF_VERSIONS_NO_YAML=1 python3 "$ROOT/idf_versions.py" list --format json)
+    b=$(python3 "$ROOT/idf_versions.py" list --format json)
+    assert_eq "$a" "$b"
+}
+
+test_versions_file_check_rejects_bad_files() {
+    local f="$TEST_TMP/v.yml" out
+    printf -- '---\ntarget_sets:\n  s: [esp32]\nversions:\n  - {version: a/v1.0, status: service, ci: pr, targets: s, released: "2026-01-01"}\n  - {version: a/v2.0, status: service, ci: pr, targets: nope, released: "2026-01-01"}\n' > "$f"
+    if out=$(python3 "$ROOT/idf_versions.py" --file "$f" check 2>&1); then
+        fail "check passed a bad file"
+        return 1
+    fi
+    assert_contains "$out" "exactly one version must have ci: pr (found 2)" || return 1
+    assert_contains "$out" "unknown target set 'nope'" || return 1
+    printf -- '---\ntarget_sets:\n  s: [esp32]\nversions:\n  - version: a/v1.0\n    status: service\n' > "$f"
+    if out=$(python3 "$ROOT/idf_versions.py" --file "$f" check 2>&1); then
+        fail "check passed a multi-line entry"
+        return 1
+    fi
+    assert_contains "$out" "on one line"
+}
+
+test_versions_file_status_warning() {
+    local f="$TEST_TMP/v.yml" out
+    printf -- '---\ntarget_sets:\n  s: [esp32]\nversions:\n  - {version: a/v1.0, status: service, ci: pr, targets: s, released: "2020-01-01"}\n' > "$f"
+    out=$(python3 "$ROOT/idf_versions.py" --file "$f" check 2>&1) || true
+    assert_contains "$out" "status is service, the support policy says eol today" || return 1
+    assert_not_contains "$out" "an end-of-life version cannot be built by CI"
+}
+
+test_versions_scope_for_events() {
+    local v="python3 $ROOT/idf_versions.py scope"
+    assert_eq "$($v --event pull_request --ref refs/pull/1/merge)" "pr" || return 1
+    assert_eq "$($v --event push --ref refs/heads/main)" "pr" || return 1
+    assert_eq "$($v --event push --ref refs/tags/v1.2.0)" "full" || return 1
+    assert_eq "$($v --event schedule)" "full" || return 1
+    assert_eq "$($v --event workflow_dispatch)" "full"
+}
+
+test_versions_matrix_scopes() {
+    local pr full
+    pr=$(python3 "$ROOT/idf_versions.py" matrix --scope pr)
+    full=$(python3 "$ROOT/idf_versions.py" matrix --scope full --target esp32c6)
+    python3 -c '
+import json, sys
+pr, full = json.loads(sys.argv[1])["include"], json.loads(sys.argv[2])["include"]
+assert len(pr) == 1, pr
+assert len(full) >= len(pr), full
+assert all(r["target"] == "esp32c6" and r["idf_ref"] for r in full), full
+assert pr[0]["idf_version"] in [r["idf_version"] for r in full]
+' "$pr" "$full" || fail "unexpected matrices: $pr / $full"
+}
+
+matrix_rows() {
+    python3 -c '
+import json, sys
+for e in json.load(sys.stdin)["include"]:
+    print(e["app_name"], e["idf_version"], e["idf_ref"], e["build_type"])'
+}
+
+test_matrix_ci_scope_pr_and_full() {
+    need_pyyaml
+    make_project "$TEST_TMP/proj"
+    local pr full
+    pr=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope pr | matrix_rows)
+    full=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope full | matrix_rows)
+    # gpio_test lists v5.5 (ci: pr) and v5.4: pull requests build v5.5 only. adc_test lists only v5.4: its first.
+    assert_eq "$pr" "gpio_test release/v5.5 release/v5.5 Debug
+gpio_test release/v5.5 release/v5.5 Release
+adc_test release/v5.4 release/v5.4 Release" || return 1
+    assert_eq "$full" "gpio_test release/v5.5 release/v5.5 Debug
+gpio_test release/v5.5 release/v5.5 Release
+gpio_test release/v5.4 release/v5.4 Debug
+adc_test release/v5.4 release/v5.4 Release" || return 1
+    assert_eq "$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" | matrix_rows)" "$full"
+}
+
+test_matrix_ci_scope_auto_and_unsupported_target() {
+    need_pyyaml
+    make_project "$TEST_TMP/proj"
+    local out err
+    out=$(GITHUB_EVENT_NAME=pull_request python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope auto \
+        | matrix_rows | wc -l | tr -d ' ')
+    assert_eq "$out" "3" || return 1
+    sed -i.bak 's/target: "esp32c6"/target: "esp32s31"/' "$TEST_TMP/proj/app_config.yml"
+    err=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>&1 >/dev/null)
+    out=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>/dev/null | matrix_rows)
+    assert_eq "$out" "" || return 1
+    assert_contains "$err" "esp32s31 is not a target of release/v5.5"
+}
+
+test_scripts_are_bash32_portable() {
+    # Constructs bash 3.2 (macOS) or BSD tools do not have, and ((x++)), which fails under set -e when x is 0.
+    local hits
+    hits=$(grep -nE '\$\{!\(\(|declare -A|local -A|typeset -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)\}|head -n -[0-9]|\(\([a-z_]+(\+\+|--)\)\)|\[\[ -v ' \
+        "$ROOT"/*.sh | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*#' || true)
+    [ -z "$hits" ] || fail "not portable: $hits"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # config_loader.sh: build_config defaults and the portable mtime sort
 # ---------------------------------------------------------------------------------------------------------------
 
