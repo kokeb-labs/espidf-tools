@@ -81,11 +81,8 @@
     
       
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" media="print" onload="this.media='all'"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"></noscript>
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="../assets/kokeb/fonts.css">
+  <noscript><link rel="stylesheet" href="../assets/kokeb/fonts.css"></noscript>
 
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
@@ -108,7 +105,8 @@
   <script>
 (function () {
   if (typeof mermaid != "undefined" && !(mermaid instanceof Element)) return;
-  var SRC = "https://unpkg.com/mermaid@11/dist/mermaid.min.js", config = {}, real, loading;
+  var SRC = "https://unpkg.com/mermaid@11.17.2/dist/mermaid.min.js",
+      SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2", config = {}, real, loading;
   var waiting = [], io = null, ahead = false, ENGAGE = ["scroll", "keydown", "pointerdown", "touchstart"];
   var stub = {
     initialize: function (c) { config = c || {}; if (real) real.initialize(config); },
@@ -123,6 +121,8 @@
     return loading || (loading = new Promise(function (resolve, reject) {
       var s = document.createElement("script");
       s.src = SRC;
+      s.integrity = SRI;
+      s.crossOrigin = "anonymous";
       s.onload = function () {
         real = window.mermaid;
         window.mermaid = stub;
@@ -564,6 +564,8 @@
   
     
     
+      
+        
       
         
       
@@ -1214,6 +1216,7 @@ type.</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python3<span class="w"> </span>scripts/generate_matrix.py<span class="w">                         </span><span class="c1"># JSON on stdout</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python3<span class="w"> </span>scripts/generate_matrix.py<span class="w"> </span>--validate<span class="w"> </span>--verbose<span class="w">    </span><span class="c1"># check the file first</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>python3<span class="w"> </span>scripts/generate_matrix.py<span class="w"> </span>--filter<span class="w"> </span>gpio_test<span class="w"> </span>--format<span class="w"> </span>yaml
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>python3<span class="w"> </span>scripts/generate_matrix.py<span class="w"> </span>--ci-scope<span class="w"> </span>pr<span class="w">                </span><span class="c1"># what a pull request builds</span>
 </span></code></pre></div>
 <h2 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h2>
 <!-- generated: options-generate-matrix -->
@@ -1269,6 +1272,12 @@ type.</p>
 <td>-</td>
 <td>Path to project directory containing app_config.yml</td>
 </tr>
+<tr>
+<td><code>--ci-scope</code></td>
+<td><code>pr</code>, <code>full</code>, <code>all</code>, <code>auto</code></td>
+<td><code>all</code></td>
+<td>Versions per app: pr (the ci: pr one of idf_versions.yml), full (every one but ci: none), auto (from GITHUB_EVENT_NAME and GITHUB_REF), all (default: every listed version, idf_versions.yml not read)</td>
+</tr>
 </tbody>
 </table>
 <!-- /generated -->
@@ -1279,9 +1288,12 @@ type.</p>
 <h2 id="output">Output<a class="headerlink" href="#output" title="Permanent link">&para;</a></h2>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span><span class="nt">"include"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p">{</span><span class="nt">"idf_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"release/v5.5"</span><span class="p">,</span><span class="w"> </span><span class="nt">"idf_version_docker"</span><span class="p">:</span><span class="w"> </span><span class="s2">"release-v5.5"</span><span class="p">,</span><span class="w"> </span><span class="nt">"idf_version_file"</span><span class="p">:</span><span class="w"> </span><span class="s2">"release_v5_5"</span><span class="p">,</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">   </span><span class="nt">"build_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Debug"</span><span class="p">,</span><span class="w"> </span><span class="nt">"app_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gpio_test"</span><span class="p">,</span><span class="w"> </span><span class="nt">"target"</span><span class="p">:</span><span class="w"> </span><span class="s2">"esp32c6"</span><span class="p">,</span><span class="w"> </span><span class="nt">"config_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"global"</span><span class="p">}</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">]}</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">   </span><span class="nt">"build_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Debug"</span><span class="p">,</span><span class="w"> </span><span class="nt">"app_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gpio_test"</span><span class="p">,</span><span class="w"> </span><span class="nt">"target"</span><span class="p">:</span><span class="w"> </span><span class="s2">"esp32c6"</span><span class="p">,</span><span class="w"> </span><span class="nt">"config_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"global"</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">   </span><span class="nt">"idf_ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"release/v5.5"</span><span class="p">,</span><span class="w"> </span><span class="nt">"idf_status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"maintenance"</span><span class="p">}</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">]}</span>
 </span></code></pre></div>
+<p>Without <code>--ci-scope</code> (the default, <code>all</code>) the output is exactly that of espidf-tools 1.0.0: no <code>idf_ref</code> or
+<code>idf_status</code>, every listed version, and <code>idf_versions.yml</code> is not read.</p>
 <table>
 <thead>
 <tr>
@@ -1293,6 +1305,14 @@ type.</p>
 <tr>
 <td><code>idf_version</code></td>
 <td>As written in <code>app_config.yml</code>; passed to <code>build_app.sh</code></td>
+</tr>
+<tr>
+<td><code>idf_ref</code></td>
+<td>With <code>--ci-scope</code>: the git ref to clone, the version's <code>ref</code> in <a href="../idf-versions/">idf_versions.yml</a>, else <code>idf_version</code></td>
+</tr>
+<tr>
+<td><code>idf_status</code></td>
+<td>With <code>--ci-scope</code>: <code>service</code>, <code>maintenance</code>, <code>eol</code> or <code>preview</code> from <code>idf_versions.yml</code>; <code>unknown</code> for a version it does not list</td>
 </tr>
 <tr>
 <td><code>idf_version_docker</code></td>
@@ -1318,11 +1338,19 @@ type.</p>
 <li>Each app uses its own <code>idf_versions</code>, or <code>metadata.idf_versions</code>.</li>
 <li>Build types: the app's flat <code>build_types</code> list for every version; or its nested list by position; or
    <code>metadata.build_types</code> by position; <code>Debug</code> and <code>Release</code> when a position has no list.</li>
-<li><code>metadata.target</code>, default <code>esp32c6</code>.</li>
+<li><code>--ci-scope</code> (see <a href="../idf-versions/#what-ci-builds">ESP-IDF versions</a>): <code>pr</code> keeps, per app, its version
+   with <code>ci: pr</code> in <code>idf_versions.yml</code>, else its first version without <code>ci: none</code>; <code>full</code> keeps every version
+   but those with <code>ci: none</code>; <code>auto</code> picks <code>full</code> or <code>pr</code> from <code>GITHUB_EVENT_NAME</code> and <code>GITHUB_REF</code>; <code>all</code>, the
+   default, keeps every version and reads nothing from <code>idf_versions.yml</code>. Two spellings of one version
+   (<code>release/v5.5</code> and <code>v5.5.1</code>) both count as its <code>ci: pr</code> version.</li>
+<li><code>metadata.target</code>, default <code>esp32c6</code>. With <code>--ci-scope</code>, a version of <code>idf_versions.yml</code> that supports the
+   target neither as stable nor as preview is dropped for that app, with a warning on standard error; when that
+   leaves the matrix empty, the script exits with status 1 and says which target and versions.</li>
 <li>Entries matching an item of <code>ci_config.exclude_combinations</code> on every key are dropped.</li>
 </ol>
 <p><code>--validate</code> fails on a missing <code>metadata</code> or <code>apps</code> section, an empty <code>apps</code>, or <code>build_types</code> / <code>idf_versions</code>
-that are not lists of strings, and warns on missing defaults, descriptions or source files. <code>--validate</code> and
+that are not lists of strings, and warns on missing defaults, descriptions or source files and on ESP-IDF
+versions <code>idf_versions.yml</code> does not list. <code>--validate</code> and
 <code>--verbose</code> print their messages on standard output before the matrix, so leave them out where the output is
 parsed as JSON (use <code>--output</code> to write the matrix to a file instead).</p>
 

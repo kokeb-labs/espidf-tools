@@ -161,8 +161,10 @@
   --md-accent-fg-color--transparent: #2bb3a31a;
 }
 
-/* Fonts: Inter / JetBrains Mono when loaded (main.html). Until then a local face with Inter's metrics (Arial or its
-   metric twins, scaled), so text does not move when Inter arrives (no layout shift from the font swap). */
+/* Fonts: Inter and JetBrains Mono, from this site. Their @font-face rules are in fonts.css, which main.html loads
+   without blocking the first paint, so the font files are never on the critical path. Until they arrive a local
+   face with their metrics (Arial or Courier New, or their metric twins, scaled) stands in, so text does not move
+   when they swap in. */
 @font-face {
   font-family: "Inter Fallback";
   src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("Arimo"), local("Helvetica");

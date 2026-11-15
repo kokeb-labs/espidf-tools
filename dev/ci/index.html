@@ -81,11 +81,8 @@
     
       
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" media="print" onload="this.media='all'"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"></noscript>
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="../assets/kokeb/fonts.css">
+  <noscript><link rel="stylesheet" href="../assets/kokeb/fonts.css"></noscript>
 
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
@@ -108,7 +105,8 @@
   <script>
 (function () {
   if (typeof mermaid != "undefined" && !(mermaid instanceof Element)) return;
-  var SRC = "https://unpkg.com/mermaid@11/dist/mermaid.min.js", config = {}, real, loading;
+  var SRC = "https://unpkg.com/mermaid@11.17.2/dist/mermaid.min.js",
+      SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2", config = {}, real, loading;
   var waiting = [], io = null, ahead = false, ENGAGE = ["scroll", "keydown", "pointerdown", "touchstart"];
   var stub = {
     initialize: function (c) { config = c || {}; if (real) real.initialize(config); },
@@ -123,6 +121,8 @@
     return loading || (loading = new Promise(function (resolve, reject) {
       var s = document.createElement("script");
       s.src = SRC;
+      s.integrity = SRI;
+      s.crossOrigin = "anonymous";
       s.onload = function () {
         real = window.mermaid;
         window.mermaid = stub;
@@ -569,6 +569,8 @@
       
         
       
+        
+      
     
     
     
@@ -998,6 +1000,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#which-esp-idf-versions-a-run-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which ESP-IDF versions a run builds
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-matrix-and-the-build-on-the-same-file" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1162,6 +1175,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#which-esp-idf-versions-a-run-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which ESP-IDF versions a run builds
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-matrix-and-the-build-on-the-same-file" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1213,7 +1237,7 @@
 <p><a href="https://kokeb-labs.github.io/ci-tools/">ci-tools</a> <code>ru-build.yml</code> runs, for a caller that pins
 <code>@v1</code>:</p>
 <ol>
-<li><code>generate_matrix.py</code> (no arguments) for the matrix;</li>
+<li><code>generate_matrix.py</code> for the matrix, with <code>--ci-scope auto</code> when the scripts have it (see below);</li>
 <li>for each entry, inside the <code>espressif/idf:&lt;idf_version_docker&gt;</code> image,
    <code>build_app.sh --project-path &lt;project_dir&gt; &lt;app&gt; &lt;build_type&gt; &lt;idf_version&gt;</code>;</li>
 <li>an upload of <code>&lt;project_dir&gt;/build*</code> (the <code>builds/</code> folder) as <code>fw-&lt;app&gt;-&lt;idf&gt;-&lt;build type&gt;</code>;</li>
@@ -1234,14 +1258,47 @@ installs <code>requirements.txt</code> when it is there.</p>
 </span></code></pre></div>
 <p>Inputs, permissions and failure modes are on the
 <a href="https://kokeb-labs.github.io/ci-tools/latest/ru-build/">ru-build page</a>.</p>
+<h2 id="which-esp-idf-versions-a-run-builds">Which ESP-IDF versions a run builds<a class="headerlink" href="#which-esp-idf-versions-a-run-builds" title="Permanent link">&para;</a></h2>
+<p>List every version an app supports in <code>app_config.yml</code>; <a href="../idf-versions/">idf_versions.yml</a> decides how many a
+run builds, so CI minutes stay low without editing each project:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Scope</th>
+<th>ESP-IDF versions per app</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tag push, schedule, manual run, release, repository dispatch</td>
+<td><code>full</code></td>
+<td>every version the app lists, except <code>ci: none</code> ones</td>
+</tr>
+<tr>
+<td>Every other event: pull request, push to a branch, merge queue</td>
+<td><code>pr</code></td>
+<td>the one with <code>ci: pr</code> (else the app's first without <code>ci: none</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>A project that wants the full set on a schedule adds one to its caller workflow:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">on</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">schedule</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">cron</span><span class="p">:</span><span class="w"> </span><span class="s">"17</span><span class="nv"> </span><span class="s">3</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">1"</span><span class="w">   </span><span class="c1"># Mondays 03:17 UTC</span>
+</span></code></pre></div>
+<p>To see what each kind of run builds:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python3<span class="w"> </span>examples/esp32/scripts/generate_matrix.py<span class="w"> </span>--project-path<span class="w"> </span>examples/esp32<span class="w"> </span>--ci-scope<span class="w"> </span>pr
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>python3<span class="w"> </span>examples/esp32/scripts/generate_matrix.py<span class="w"> </span>--project-path<span class="w"> </span>examples/esp32<span class="w"> </span>--ci-scope<span class="w"> </span>full
+</span></code></pre></div>
 <h2 id="keep-the-matrix-and-the-build-on-the-same-file">Keep the matrix and the build on the same file<a class="headerlink" href="#keep-the-matrix-and-the-build-on-the-same-file" title="Permanent link">&para;</a></h2>
 <p>The workflow runs <code>generate_matrix.py</code> without <code>--project-path</code>, so the matrix comes from
 <code>examples/esp32/app_config.yml</code> (from the repository root) or from <code>app_config.yml</code> above the scripts. Keep the
 project in <code>examples/esp32</code> with the scripts in <code>examples/esp32/scripts</code>, the Kokeb Labs layout, and both read the same
 file.</p>
 <h2 id="check-locally-what-ci-will-build">Check locally what CI will build<a class="headerlink" href="#check-locally-what-ci-will-build" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>examples/esp32/scripts/generate_matrix.py<span class="w"> </span>--project-path<span class="w"> </span>examples/esp32<span class="w"> </span>--format<span class="w"> </span>yaml
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./examples/esp32/scripts/build_app.sh<span class="w"> </span>combinations
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>examples/esp32/scripts/generate_matrix.py<span class="w"> </span>--project-path<span class="w"> </span>examples/esp32<span class="w"> </span>--format<span class="w"> </span>yaml
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./examples/esp32/scripts/build_app.sh<span class="w"> </span>combinations
 </span></code></pre></div>
 
 

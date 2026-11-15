@@ -79,11 +79,8 @@
     
       
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" media="print" onload="this.media='all'"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"></noscript>
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="assets/kokeb/fonts.css">
+  <noscript><link rel="stylesheet" href="assets/kokeb/fonts.css"></noscript>
 
     
     <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
@@ -106,7 +103,8 @@
   <script>
 (function () {
   if (typeof mermaid != "undefined" && !(mermaid instanceof Element)) return;
-  var SRC = "https://unpkg.com/mermaid@11/dist/mermaid.min.js", config = {}, real, loading;
+  var SRC = "https://unpkg.com/mermaid@11.17.2/dist/mermaid.min.js",
+      SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2", config = {}, real, loading;
   var waiting = [], io = null, ahead = false, ENGAGE = ["scroll", "keydown", "pointerdown", "touchstart"];
   var stub = {
     initialize: function (c) { config = c || {}; if (real) real.initialize(config); },
@@ -121,6 +119,8 @@
     return loading || (loading = new Promise(function (resolve, reject) {
       var s = document.createElement("script");
       s.src = SRC;
+      s.integrity = SRI;
+      s.crossOrigin = "anonymous";
       s.onload = function () {
         real = window.mermaid;
         window.mermaid = stub;
@@ -638,6 +638,8 @@
       
         
       
+        
+      
     
     
     
@@ -918,7 +920,7 @@ and <a href="https://kokeb-labs.github.io/ci-tools/">ci-tools</a> runs them in G
 <details class="kb-figure-desc">
 <summary>Figure description and sources</summary>
 <p>Top to bottom, from who starts the work to the file everything reads. There are two ways in: you run a command in a terminal, or ci-tools' ru-build runs in CI. The commands (read from the scripts that source config_loader.sh) load their settings through config_loader.sh; build_app.sh also asks get_app_info.py for an app's source file, and the build and flash commands run idf.py. In CI, ru-build first runs generate_matrix.py to get one job per app, ESP-IDF version and build type, then runs build_app.sh in each job. config_loader.sh, get_app_info.py and generate_matrix.py all read the same app_config.yml. Solid arrows run something, dashed arrows read a file.</p>
-<p>Drawn from: <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/build_app.sh"><code>build_app.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/flash_app.sh"><code>flash_app.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/manage_idf.sh"><code>manage_idf.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/idf_flash_monitor.sh"><code>idf_flash_monitor.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/build_app.sh"><code>build_app.sh</code></a> <code>get_app_info.py</code>; figure module <a href="https://github.com/kokeb-labs/espidf-tools/blob/d8df0892c57b706a836229c237f248f278d870fe/docs/diagrams/figures/tool-map.py"><code>docs/diagrams/figures/tool-map.py</code></a>.</p>
+<p>Drawn from: <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/build_app.sh"><code>build_app.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/flash_app.sh"><code>flash_app.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/manage_idf.sh"><code>manage_idf.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/idf_flash_monitor.sh"><code>idf_flash_monitor.sh</code></a> <code>source config_loader.sh</code>; <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/build_app.sh"><code>build_app.sh</code></a> <code>get_app_info.py</code>; figure module <a href="https://github.com/kokeb-labs/espidf-tools/blob/5de71630534e84f8a86fade8304f81100aad6a53/docs/diagrams/figures/tool-map.py"><code>docs/diagrams/figures/tool-map.py</code></a>.</p>
 </details>
 <h2 id="the-scripts">The scripts<a class="headerlink" href="#the-scripts" title="Permanent link">&para;</a></h2>
 <table>
