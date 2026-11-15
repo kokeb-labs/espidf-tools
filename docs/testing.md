@@ -5,8 +5,15 @@ What checks this repository, and how to run the tests.
 ## Tests
 
 `tests/test_scripts.sh` checks the scripts' behaviour without ESP-IDF, network or a board: the ESP-IDF folder
-names `manage_idf.sh` uses, every `manage_logs.sh` command, the `build_config` defaults in `config_loader.sh`, every
-`get_app_info.py` command, and that no script relies on GNU-only `find -printf` or `stat -c`. Each test runs in its
+names `manage_idf.sh` uses, its options under bash 3.2, `install` / `verify` / `uninstall` against a fake `git`
+(the ref, `--shallow`, `--targets`, `ESP_IDF_ROOT`, the Python environment), `update` against a real local git
+repository (full and shallow clones moved to a tag or branch that appeared after the clone), the default-version
+guard of `uninstall` through trailing-slash and relative symlinks, `idf_versions.yml` (`check`, both readers
+agree, the event-to-scope table, matrices), `generate_matrix.py` (the default output byte for byte against
+1.0.0, `--ci-scope`, `ci: none`, the empty-matrix error), every `manage_logs.sh` command, the
+`build_config` defaults in `config_loader.sh`, every `get_app_info.py` command, and that no script relies on
+GNU-only `find -printf`, `stat -c` or `head -n -N`, on bash 4 (`declare -A`, `mapfile`, `${x,,}`, `[[ -v`), or on
+`((x++))`, which stops a `set -e` script when `x` is 0. Each test runs in its
 own temporary folder (with `HOME` pointed there for `manage_idf.sh`). It needs only bash 3.2 or later; the
 `get_app_info.py` tests also need `python3` with PyYAML and are skipped without it.
 
@@ -32,8 +39,8 @@ The build and flash scripts are exercised by every repository that builds its ES
 | Workflow | Checks |
 | --- | --- |
 | `ci-docs-publish.yml` | Strict site build, generated tables and figure drift, link check, Lighthouse; publishes the site from `main`; runs `script-tests.yml`; a single `CI gate` check that fails when the docs or the script tests fail |
-| `script-tests.yml` | `tests/test_scripts.sh` on Ubuntu (GNU tools) and macOS (BSD tools, bash 3.2). Called by `ci-docs-publish.yml`: always on `main`, and on pull requests that change a `.sh` or `.py` file, `tests/` or a workflow; otherwise skipped, which the gate accepts |
-| `yamllint.yml` | YAML style (`.yamllint`, strict) |
+| `script-tests.yml` | `tests/test_scripts.sh` on Ubuntu (GNU tools) and macOS (BSD tools, bash 3.2). Called by `ci-docs-publish.yml`: always on `main`, and on pull requests that change a `.sh` or `.py` file, `idf_versions.yml`, `tests/` or a workflow; otherwise skipped, which the gate accepts |
+| `yamllint.yml` | YAML style (`.yamllint`, strict), `idf_versions.yml` included |
 
 `ci-docs-publish.yml` and `yamllint.yml` call the versioned workflows of [ci-tools](https://github.com/kokeb-labs/ci-tools)
 at `@v1`. After editing an argument of `generate_matrix.py` or `get_app_info.py`, refresh the tables on this

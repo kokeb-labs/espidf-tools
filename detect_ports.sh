@@ -143,7 +143,7 @@ detect_esp32_devices() {
             
             # Check for any other USB serial devices
             for port in /dev/cu.usb* /dev/tty.usb*; do
-                if [ -e "$port" ] && [[ ! " ${devices[@]} " =~ " ${port} " ]]; then
+                if [ -e "$port" ] && [[ ! " ${devices[*]} " =~ " ${port} " ]]; then
                     devices+=("$port")
                     echo "  Found: $port"
                 fi
@@ -347,7 +347,7 @@ main() {
                     done
                 done
                 for port in /dev/cu.usb* /dev/tty.usb*; do
-                    if [ -e "$port" ] && [[ ! " ${devices[@]} " =~ " ${port} " ]]; then
+                    if [ -e "$port" ] && [[ ! " ${devices[*]} " =~ " ${port} " ]]; then
                         devices+=("$port")
                     fi
                 done

@@ -437,17 +437,141 @@ install_yq() {
 # ESP-IDF INSTALLATION FUNCTIONS
 # =============================================================================
 
+# The folder of these scripts, for idf_versions.py and idf_versions.yml next to them.
+ESPIDF_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Where the ESP-IDF checkouts live: $ESP_IDF_ROOT, default ~/esp. Tools go to $IDF_TOOLS_PATH (ESP-IDF's own
+# variable, default ~/.espressif).
+esp_idf_root() {
+    echo "${ESP_IDF_ROOT:-$HOME/esp}"
+}
+
+# The git repository versions are cloned from.
+ESP_IDF_GIT_URL="${ESP_IDF_GIT_URL:-https://github.com/espressif/esp-idf.git}"
+
+# Run idf_versions.py (the versions file reader); prints nothing and fails when python3 is missing.
+idf_versions_cmd() {
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 "$ESPIDF_TOOLS_DIR/idf_versions.py" "$@"
+}
+
+# The git ref to clone for a version: its `ref` in idf_versions.yml, else the version itself.
+idf_ref_for_version() {
+    local ref
+    ref=$(idf_versions_cmd get "$1" ref 2>/dev/null) || ref=""
+    echo "${ref:-$1}"
+}
+
+# The version CI builds on every run (ci: pr in idf_versions.yml), else release/v5.5.
+idf_default_version() {
+    local v
+    v=$(idf_versions_cmd default 2>/dev/null) || v=""
+    echo "${v:-release/v5.5}"
+}
+
+# "6.1" for release/v6.1, v6.1 or v6.1.2; nothing for master and other refs.
+idf_major_minor() {
+    echo "$1" | sed -n 's/.*v\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1.\2/p' | head -1
+}
+
+# "6.1" for an ESP-IDF checkout, from its tools/cmake/version.cmake; fails when the file is not there.
+idf_dir_major_minor() {
+    local file="$1/tools/cmake/version.cmake" major minor
+    [[ -f "$file" ]] || return 1
+    major=$(sed -n 's/^set(IDF_VERSION_MAJOR \([0-9][0-9]*\)).*/\1/p' "$file")
+    minor=$(sed -n 's/^set(IDF_VERSION_MINOR \([0-9][0-9]*\)).*/\1/p' "$file")
+    [[ -n "$major" && -n "$minor" ]] || return 1
+    echo "$major.$minor"
+}
+
+# Whether the ESP-IDF at a folder is the version asked for (same major.minor). Refs without a version in their
+# name (master, a commit) always match.
+idf_dir_matches_version() {
+    local want have
+    want=$(idf_major_minor "$2")
+    [[ -z "$want" ]] && return 0
+    have=$(idf_dir_major_minor "$1") || return 1
+    [[ "$have" == "$want" ]]
+}
+
+# Move an existing checkout to a ref, branch or tag, whether it was cloned in full or shallow (one branch).
+# A fetch with a plain ref name writes only FETCH_HEAD, so the refspecs are explicit: a tag lands in
+# refs/tags, a branch in refs/remotes/origin and the local branch is reset to it. A shallow checkout stays
+# shallow (depth 1, submodules too).
+#   idf_checkout_ref <dir> <ref>
+idf_checkout_ref() {
+    local dir="$1" ref="$2"
+    # Every step checks its own status: callers run this inside `if`, where set -e does nothing.
+    (
+        cd "$dir" || exit 1
+        depth=()
+        if [[ -f "$(git rev-parse --git-dir)/shallow" ]]; then
+            depth=(--depth 1)
+        fi
+        if git ls-remote --exit-code origin "refs/tags/$ref" >/dev/null 2>&1; then
+            git fetch ${depth[@]+"${depth[@]}"} origin "+refs/tags/$ref:refs/tags/$ref" || exit 1
+            git checkout -q "refs/tags/$ref" || exit 1
+        elif git ls-remote --exit-code origin "refs/heads/$ref" >/dev/null 2>&1; then
+            git fetch ${depth[@]+"${depth[@]}"} origin "+refs/heads/$ref:refs/remotes/origin/$ref" || exit 1
+            git checkout -q -B "$ref" "refs/remotes/origin/$ref" || exit 1
+        else
+            echo "ERROR: $ref is neither a tag nor a branch of $(git remote get-url origin)" >&2
+            exit 1
+        fi
+        git submodule sync --recursive || exit 1
+        git submodule update --init --recursive ${depth[@]+"${depth[@]}"} || exit 1
+    )
+}
+
+# Clone (or update) one version into its folder and install its tools for the given targets.
+#   idf_clone_and_install <version> <targets, comma-separated> <shallow: true|false>
+idf_clone_and_install() {
+    local idf_version="$1" targets="${2:-esp32c6}" shallow="${3:-false}"
+    local ref idf_dir
+    ref=$(idf_ref_for_version "$idf_version")
+    idf_dir=$(esp_idf_dir_for_version "$idf_version")
+    mkdir -p "$(esp_idf_root)"
+
+    if [[ -d "$idf_dir/.git" ]]; then
+        print_status "ESP-IDF $idf_version already in $idf_dir, updating to $ref..."
+        if ! idf_checkout_ref "$idf_dir" "$ref"; then
+            print_error "Failed to update ESP-IDF $idf_version in $idf_dir"
+            return 1
+        fi
+    else
+        local clone_args=(--recursive --branch "$ref")
+        if [[ "$shallow" == "true" ]]; then
+            clone_args+=(--depth 1 --shallow-submodules)
+        fi
+        print_status "Cloning ESP-IDF $idf_version ($ref) into $idf_dir..."
+        if ! git clone "${clone_args[@]}" "$ESP_IDF_GIT_URL" "$idf_dir"; then
+            print_error "Failed to clone ESP-IDF $ref"
+            return 1
+        fi
+    fi
+
+    print_status "Installing ESP-IDF tools for: $targets"
+    if ! (cd "$idf_dir" && ./install.sh "$targets"); then
+        print_error "Failed to install the ESP-IDF tools for $idf_version"
+        return 1
+    fi
+    print_success "ESP-IDF $idf_version installed in $idf_dir"
+}
+
 # Function to install ESP-IDF
 install_esp_idf() {
     print_status "Installing ESP-IDF..."
-    
+
     # Load configuration to get IDF versions
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local script_dir="$ESPIDF_TOOLS_DIR"
     local project_dir="$(cd "$script_dir/.." && pwd)"
     local config_file="$project_dir/app_config.yml"
-    
-    local idf_versions=("release/v5.5")  # Default fallback
-    
+    local fallback
+    fallback=$(idf_default_version)
+
+    local idf_versions=("$fallback")  # Default fallback: the ci: pr version of idf_versions.yml
+    local targets="esp32c6"
+
     if [[ -f "$config_file" ]]; then
         source "$script_dir/config_loader.sh"
         if load_config; then
@@ -457,85 +581,41 @@ install_esp_idf() {
                 IFS=' ' read -ra idf_versions <<< "$config_idf_versions"
                 print_status "Using IDF versions from config: ${idf_versions[*]}"
             else
-                print_warning "Could not read IDF versions from config, using default: release/v5.5"
+                print_warning "Could not read IDF versions from config, using default: $fallback"
             fi
+            targets=$(get_target 2>/dev/null || echo "esp32c6")
         else
-            print_warning "Could not load config, using default IDF version: release/v5.5"
+            print_warning "Could not load config, using default IDF version: $fallback"
         fi
     else
-        print_warning "Config file not found, using default IDF version: release/v5.5"
+        print_warning "Config file not found, using default IDF version: $fallback"
     fi
-    
-    local esp_dir="$HOME/esp"
-    
-    # Create esp directory if it doesn't exist
+
+    local esp_dir
+    esp_dir=$(esp_idf_root)
     mkdir -p "$esp_dir"
-    
+
     # Install each required ESP-IDF version
+    local idf_version
     for idf_version in "${idf_versions[@]}"; do
-        # Use consistent sanitization method
-        local sanitized_version=$(echo "$idf_version" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        local idf_dir="$esp_dir/esp-idf-${sanitized_version}"
-    
-    if [[ -d "$idf_dir" ]]; then
-            print_status "ESP-IDF $idf_version already exists, updating..."
-        cd "$idf_dir"
-        git fetch origin
-        git checkout "$idf_version"
-        git pull origin "$idf_version"
-        # Ensure submodules are synced and updated to match the checked-out branch
-        if ! git submodule sync --recursive; then
-            print_warning "Failed to sync submodules, continuing anyway..."
-        fi
-        if ! git submodule update --init --recursive; then
-            print_warning "Failed to update submodules, continuing anyway..."
-        fi
-        if ! ./install.sh esp32c6; then
-            print_error "Failed to install ESP-IDF tools"
-            return 1
-        fi
-        cd - > /dev/null
-    else
-            print_status "Cloning ESP-IDF $idf_version..."
-        cd "$esp_dir"
-        if ! git clone --recursive --branch "$idf_version" https://github.com/espressif/esp-idf.git "$idf_dir"; then
-            print_error "Failed to clone ESP-IDF $idf_version"
-            return 1
-        fi
-        cd "$idf_dir"
-        # Extra safety to keep submodules in sync even after clone
-        if ! git submodule sync --recursive; then
-            print_warning "Failed to sync submodules, continuing anyway..."
-        fi
-        if ! git submodule update --init --recursive; then
-            print_warning "Failed to update submodules, continuing anyway..."
-        fi
-        if ! ./install.sh esp32c6; then
-            print_error "Failed to install ESP-IDF tools"
-            return 1
-        fi
-        cd - > /dev/null
-    fi
-        
-        print_success "ESP-IDF $idf_version installed/updated"
+        idf_clone_and_install "$idf_version" "$targets" "false" || return 1
     done
-    
+
     # Create symlink for default version (first in the list)
     local default_idf_dir="$esp_dir/esp-idf"
-    local first_version="${idf_versions[0]}"
-    local first_sanitized=$(echo "$first_version" | sed 's/[^a-zA-Z0-9._-]/-/g')
-    local first_idf_dir="$esp_dir/esp-idf-${first_sanitized}"
-    
+    local first_idf_dir
+    first_idf_dir=$(esp_idf_dir_for_version "${idf_versions[0]}")
+
     if [[ -L "$default_idf_dir" ]]; then
         rm "$default_idf_dir"
     fi
     ln -sf "$first_idf_dir" "$default_idf_dir"
     print_status "Default ESP-IDF symlink created: $default_idf_dir -> $first_idf_dir"
-    
+
     # If IDF_VERSION is set, override the symlink to point to that version
     if [[ -n "$IDF_VERSION" ]]; then
-        local ci_sanitized=$(echo "$IDF_VERSION" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        local ci_idf_dir="$esp_dir/esp-idf-${ci_sanitized}"
+        local ci_idf_dir
+        ci_idf_dir=$(esp_idf_dir_for_version "$IDF_VERSION")
         if [[ -d "$ci_idf_dir" ]]; then
             if [[ -L "$default_idf_dir" ]]; then
                 rm "$default_idf_dir"
@@ -546,23 +626,23 @@ install_esp_idf() {
             print_warning "CI mode: Requested IDF_VERSION $IDF_VERSION not found, keeping default symlink"
         fi
     fi
-    
-    # Optimize for caching by ensuring all tools are properly installed
-    print_status "Optimizing ESP-IDF installation for caching..."
-    
-    # Ensure all ESP-IDF tools are available
-    if [[ -f "$HOME/.espressif/export.sh" ]]; then
-        source "$HOME/.espressif/export.sh"
-        print_success "ESP-IDF tools environment loaded"
-    fi
-    
-    print_success "ESP-IDF versions installed/updated and optimized for caching"
+
+    print_success "ESP-IDF versions installed/updated"
 }
 
-# ESP-IDF install folder for a version: ~/esp/esp-idf-<version>, with every character other than letters,
+# Whether two paths are the same folder once symlinks are resolved (a link written with a trailing slash or
+# as a relative name still matches). Fails when either does not exist.
+same_dir() {
+    local a b
+    a=$(cd -P "$1" 2>/dev/null && pwd) || return 1
+    b=$(cd -P "$2" 2>/dev/null && pwd) || return 1
+    [[ "$a" == "$b" ]]
+}
+
+# ESP-IDF install folder for a version: <root>/esp-idf-<version>, with every character other than letters,
 # digits, ".", "_" and "-" replaced by "-" (release/v5.5 -> ~/esp/esp-idf-release-v5.5).
 esp_idf_dir_for_version() {
-    echo "$HOME/esp/esp-idf-$(echo "$1" | sed 's/[^a-zA-Z0-9._-]/-/g')"
+    echo "$(esp_idf_root)/esp-idf-$(echo "$1" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 }
 
 # Existing install folder for a version: the name above, else the older name with "/" replaced by "_"
@@ -570,7 +650,7 @@ esp_idf_dir_for_version() {
 find_esp_idf_dir() {
     local standard legacy
     standard=$(esp_idf_dir_for_version "$1")
-    legacy="$HOME/esp/esp-idf-${1//\//_}"
+    legacy="$(esp_idf_root)/esp-idf-${1//\//_}"
     if [[ -d "$standard" ]]; then
         echo "$standard"
     elif [[ -d "$legacy" ]]; then
@@ -581,25 +661,45 @@ find_esp_idf_dir() {
     fi
 }
 
+# The version name of an install folder: the idf_versions.yml version whose folder it is, else the folder name
+# with esp-idf- removed and its first "-" or "_" turned back into "/" (esp-idf-release-v5.5 -> release/v5.5).
+idf_version_for_dir() {
+    local dir="$1" base v
+    base=$(basename "$dir")
+    for v in $(idf_versions_cmd list --format names 2>/dev/null); do
+        if [[ "$base" == "$(basename "$(esp_idf_dir_for_version "$v")")" || "$base" == "esp-idf-${v//\//_}" ]]; then
+            echo "$v"
+            return 0
+        fi
+    done
+    base="${base#esp-idf-}"
+    case "$base" in
+        release[-_]*) echo "release/${base#release?}" ;;
+        *) echo "$base" ;;
+    esac
+}
+
 # Function to export ESP-IDF environment for specific version
 export_esp_idf_version() {
     local idf_version="$1"
     local auto_install="${2:-false}"
-    
+
     if [[ -z "$idf_version" ]]; then
         print_error "ESP-IDF version not specified"
         return 1
     fi
-    
-    local esp_dir="$HOME/esp"
+
+    local esp_dir
+    esp_dir=$(esp_idf_root)
     local idf_dir
     idf_dir=$(find_esp_idf_dir "$idf_version") || true
-    
+
     if [[ ! -d "$idf_dir" ]]; then
         if [[ "$auto_install" == "true" ]]; then
             print_status "ESP-IDF version $idf_version not found, attempting auto-installation..."
             if install_esp_idf_version "$idf_version"; then
                 print_success "ESP-IDF version $idf_version installed successfully"
+                idf_dir=$(find_esp_idf_dir "$idf_version") || true
             else
                 print_error "Failed to install ESP-IDF version $idf_version"
                 return 1
@@ -609,30 +709,29 @@ export_esp_idf_version() {
             print_status "Available versions:"
             for dir in "$esp_dir"/esp-idf-*; do
                 if [[ -d "$dir" ]]; then
-                    local version_name=$(basename "$dir" | sed 's/esp-idf-//' | sed 's/[-_]/\//')
-                    echo "  - $version_name"
+                    echo "  - $(idf_version_for_dir "$dir")"
                 fi
             done
             print_status "To auto-install missing versions, use: export_esp_idf_version '$idf_version' true"
             return 1
         fi
     fi
-    
+
     print_status "Exporting ESP-IDF environment for version: $idf_version"
-    
+
     # Source the ESP-IDF export script
     if [[ -f "$idf_dir/export.sh" ]]; then
         source "$idf_dir/export.sh"
-        
+
         # Verify the environment is loaded
         if command_exists idf.py; then
             local idf_path=$(idf.py --version 2>/dev/null | head -1 || echo "Unknown")
             print_success "ESP-IDF environment loaded: $idf_path"
-            
+
             # Export IDF_PATH for this session
             export IDF_PATH="$idf_dir"
             export IDF_VERSION="$idf_version"
-            
+
             return 0
         else
             print_error "Failed to load ESP-IDF environment for version $idf_version"
@@ -644,127 +743,79 @@ export_esp_idf_version() {
     fi
 }
 
-# Function to install specific ESP-IDF version
+# Function to install specific ESP-IDF version: clone (or update) it, install its tools for the target of
+# app_config.yml (else esp32c6, or $IDF_INSTALL_TARGETS) and point <root>/esp-idf at it.
 install_esp_idf_version() {
     local idf_version="$1"
-    
+
     if [[ -z "$idf_version" ]]; then
         print_error "ESP-IDF version not specified"
         return 1
     fi
-    
+
     print_status "Installing ESP-IDF version: $idf_version"
-    
-    # Create ESP directory if it doesn't exist
-    local esp_dir="$HOME/esp"
-    mkdir -p "$esp_dir"
-    
-    # Change to ESP directory
-    cd "$esp_dir"
-    
-    # Sanitize version string for directory name - handle more special characters
-    local sanitized_version=$(echo "$idf_version" | sed 's/[^a-zA-Z0-9._-]/-/g')
-    local idf_dir="esp-idf-${sanitized_version}"
-    
-    print_status "Using sanitized directory name: $idf_dir"
-    
-    if [[ -d "$idf_dir" ]]; then
-        print_status "ESP-IDF directory already exists, updating..."
-        cd "$idf_dir"
-        if ! git fetch origin; then
-            print_error "Failed to fetch from origin"
-            return 1
-        fi
-        if ! git checkout "$idf_version"; then
-            print_error "Failed to checkout $idf_version"
-            return 1
-        fi
-        if ! git pull origin "$idf_version"; then
-            print_error "Failed to pull $idf_version"
-            return 1
-        fi
-    else
-        print_status "Cloning ESP-IDF version $idf_version..."
-        if git clone --recursive --branch "$idf_version" https://github.com/espressif/esp-idf.git "$idf_dir"; then
-            cd "$idf_dir"
-        else
-            print_error "Failed to clone ESP-IDF version $idf_version"
-            return 1
-        fi
+
+    local targets="${IDF_INSTALL_TARGETS:-}"
+    if [[ -z "$targets" ]]; then
+        targets="${CONFIG_TARGET:-}"
     fi
-    
-    # Install ESP-IDF tools
-    print_status "Installing ESP-IDF tools..."
-    print_status "Current directory: $(pwd)"
-    print_status "Installing for targets: esp32c6"
-    
-    if ./install.sh esp32c6; then
-        print_success "ESP-IDF tools installed successfully"
-        
-        # Create a symlink for easy access
-        cd "$esp_dir"
-        if [[ -L "esp-idf" ]]; then
-            rm "esp-idf"
-        fi
-        ln -sf "$idf_dir" "esp-idf"
-        print_status "Created symlink: esp-idf -> $idf_dir"
-        
-        # Verify that tools are installed to the correct location
-        if [[ -f "$HOME/.espressif/export.sh" ]]; then
-            print_status "ESP-IDF tools verified at $HOME/.espressif/export.sh"
-        else
-            print_warning "ESP-IDF tools export.sh not found at expected location"
-            print_status "Checking what was installed..."
-            ls -la "$HOME/.espressif" 2>/dev/null || print_warning "Could not list ESP-IDF tools directory"
-        fi
-        
-        # Check if the ESP-IDF source directory has export.sh
-        if [[ -f "$idf_dir/export.sh" ]]; then
-            print_status "ESP-IDF source export.sh found at $idf_dir/export.sh"
-        else
-            print_warning "ESP-IDF source export.sh not found at $idf_dir/export.sh"
-        fi
-    else
-        print_error "Failed to install ESP-IDF tools"
-        return 1
+    targets="${targets:-esp32c6}"
+
+    idf_clone_and_install "$idf_version" "$targets" "${IDF_INSTALL_SHALLOW:-false}" || return 1
+
+    local esp_dir idf_dir
+    esp_dir=$(esp_idf_root)
+    idf_dir=$(esp_idf_dir_for_version "$idf_version")
+    if [[ -L "$esp_dir/esp-idf" ]]; then
+        rm "$esp_dir/esp-idf"
     fi
-    
+    ln -sf "$idf_dir" "$esp_dir/esp-idf"
+    print_status "Created symlink: $esp_dir/esp-idf -> $idf_dir"
+
+    if [[ -f "$idf_dir/export.sh" ]]; then
+        print_status "ESP-IDF source export.sh found at $idf_dir/export.sh"
+    else
+        print_warning "ESP-IDF source export.sh not found at $idf_dir/export.sh"
+    fi
+
     print_success "ESP-IDF version $idf_version installed successfully"
     return 0
 }
 
 # Function to list available ESP-IDF versions
 list_esp_idf_versions() {
-    local esp_dir="$HOME/esp"
-    
+    local esp_dir
+    esp_dir=$(esp_idf_root)
+
     if [[ ! -d "$esp_dir" ]]; then
         print_warning "ESP directory not found: $esp_dir"
         return 1
     fi
-    
+
     print_status "Available ESP-IDF versions:"
-    
+
     local found_versions=0
     for dir in "$esp_dir"/esp-idf-*; do
         if [[ -d "$dir" ]]; then
-            local version_name=$(basename "$dir" | sed 's/esp-idf-//' | sed 's/[-_]/\//')
+            local version_name
+            version_name=$(idf_version_for_dir "$dir")
             local is_default=""
-            
+
             # Check if this is the default symlink
-            if [[ -L "$esp_dir/esp-idf" ]] && [[ "$(readlink "$esp_dir/esp-idf")" == "$dir" ]]; then
+            if [[ -L "$esp_dir/esp-idf" ]] && same_dir "$esp_dir/esp-idf" "$dir"; then
                 is_default=" (default)"
             fi
-            
+
             echo "  - $version_name$is_default"
             found_versions=$((found_versions + 1))
         fi
     done
-    
+
     if [[ $found_versions -eq 0 ]]; then
         print_warning "No ESP-IDF versions found"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -851,7 +902,7 @@ verify_installation() {
             print_success "$cmd: $(command -v "$cmd")"
         else
             print_error "$cmd: NOT FOUND"
-            ((errors++))
+            errors=$((errors + 1))
         fi
     done
     
@@ -862,7 +913,7 @@ verify_installation() {
         print_success "clang: $clang_version"
     else
         print_error "clang: NOT FOUND"
-        ((errors++))
+        errors=$((errors + 1))
     fi
     
     if command_exists clang-format; then
@@ -870,7 +921,7 @@ verify_installation() {
         print_success "clang-format: $format_version"
     else
         print_error "clang-format: NOT FOUND"
-        ((errors++))
+        errors=$((errors + 1))
     fi
     
     if command_exists clang-tidy; then
@@ -878,7 +929,7 @@ verify_installation() {
         print_success "clang-tidy: $tidy_version"
     else
         print_error "clang-tidy: NOT FOUND"
-        ((errors++))
+        errors=$((errors + 1))
     fi
     
     # Check ESP-IDF
@@ -886,7 +937,7 @@ verify_installation() {
         print_success "ESP-IDF: $HOME/esp/esp-idf"
     else
         print_error "ESP-IDF: NOT FOUND"
-        ((errors++))
+        errors=$((errors + 1))
     fi
     
     # Check Python packages
@@ -894,7 +945,7 @@ verify_installation() {
         print_success "PyYAML: installed"
     else
         print_error "PyYAML: NOT FOUND"
-        ((errors++))
+        errors=$((errors + 1))
     fi
     
     if [[ $errors -eq 0 ]]; then

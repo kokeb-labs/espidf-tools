@@ -25,6 +25,7 @@ Shell and Python scripts that build, flash and monitor every app of a multi-app 
 With the apps listed in `examples/esp32/app_config.yml` and these scripts in `examples/esp32/scripts`:
 
 ```bash
+./scripts/manage_idf.sh available               # ESP-IDF versions: status, CI use, chips
 ./scripts/build_app.sh list                     # apps, build types, ESP-IDF versions
 ./scripts/build_app.sh gpio_test Debug          # build into builds/build-app-gpio_test-type-Debug-...
 ./scripts/flash_app.sh gpio_test Debug          # flash and monitor; finds the port, builds if needed
@@ -35,10 +36,12 @@ With the apps listed in `examples/esp32/app_config.yml` and these scripts in `ex
 - Builds each app, build type and ESP-IDF version into its own folder under `builds/`, so switching never
   reuses another build's cache.
 - Refuses combinations `app_config.yml` does not allow, and lists the ones it does.
-- Installs and exports the ESP-IDF versions the project asks for, under `~/esp`.
+- Installs, verifies and exports the ESP-IDF versions the project asks for, under `~/esp`, from one
+  `idf_versions.yml` that lists each version's git ref, chips and support status.
 - Finds the board's serial port on Linux and macOS, flashes, monitors and logs the monitor output.
 - Turns `app_config.yml` into the GitHub Actions matrix that
-  [ci-tools](https://github.com/kokeb-labs/ci-tools) builds, with size files for its report.
+  [ci-tools](https://github.com/kokeb-labs/ci-tools) builds, with size files for its report: one ESP-IDF version
+  per app on pull requests, all of them on tags and schedules.
 
 ## Install
 
@@ -60,12 +63,15 @@ The project's `main` component compiles the file `build_app.sh` passes as `APP_S
 | [build_app.sh](https://kokeb-labs.github.io/espidf-tools/latest/build-app/) | Arguments, build folders, size files, CMake variables |
 | [flash_app.sh](https://kokeb-labs.github.io/espidf-tools/latest/flash-app/) | Operations, port search, logging |
 | [manage_idf.sh](https://kokeb-labs.github.io/espidf-tools/latest/manage-idf/) | ESP-IDF versions under `~/esp` |
+| [ESP-IDF versions](https://kokeb-labs.github.io/espidf-tools/latest/idf-versions/) | `idf_versions.yml`: adding a version, support periods, what CI builds |
 | [Using in CI](https://kokeb-labs.github.io/espidf-tools/latest/ci/) | The matrix and the build in GitHub Actions |
 
 ## Tests
 
 ```bash
-cd examples/esp32/scripts/tests && ./test_tab_completion.sh
+./tests/test_scripts.sh                                       # behaviour tests, bash 3.2 or later
+python3 idf_versions.py check                                 # the versions file
+cd examples/esp32/scripts/tests && ./test_tab_completion.sh   # tab completion, inside a project
 ```
 
 ## Contributing

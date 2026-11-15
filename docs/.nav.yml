@@ -8,6 +8,7 @@ nav:
   - Concepts:
       - Project layout: project-layout.md
       - app_config.yml: app-config.md
+      - ESP-IDF versions: idf-versions.md
   - Guides:
       - build_app.sh: build-app.md
       - flash_app.sh: flash-app.md

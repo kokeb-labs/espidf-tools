@@ -22,7 +22,7 @@ while [[ $i -le $# ]]; do
             # Check if next argument exists and is not another flag
             if [[ $next_i -le $# ]] && [[ "${!next_i}" != -* ]]; then
                 PROJECT_PATH="${!next_i}"
-                ((i++))  # Skip the next argument since we consumed it
+                i=$((i + 1))  # Skip the next argument since we consumed it
             else
                 echo "ERROR: --project-path requires a path argument" >&2
                 echo "Usage: --project-path /path/to/project" >&2
@@ -33,7 +33,7 @@ while [[ $i -le $# ]]; do
             # Check if next argument exists and is not another flag
             if [[ $next_i -le $# ]] && [[ "${!next_i}" != -* ]]; then
                 EXPLICIT_PORT="${!next_i}"
-                ((i++))  # Skip the next argument since we consumed it
+                i=$((i + 1))  # Skip the next argument since we consumed it
             else
                 echo "ERROR: --port requires a port path argument" >&2
                 echo "Usage: --port /dev/ttyACM0" >&2
@@ -44,7 +44,7 @@ while [[ $i -le $# ]]; do
             FILTERED_ARGS+=("$arg")
             ;;
     esac
-    ((i++))
+    i=$((i + 1))
 done
 
 # Export PROJECT_PATH if it was set via --project-path flag
@@ -178,7 +178,7 @@ while [[ $i -le $# ]]; do
                 next_arg="${!next_i}"
                 if [[ "$next_arg" != -* ]]; then
                     CUSTOM_LOG_NAME="$next_arg"
-                    ((i++))  # Skip the next argument since we consumed it
+                    i=$((i + 1))  # Skip the next argument since we consumed it
                 fi
             fi
             ;;
@@ -186,7 +186,7 @@ while [[ $i -le $# ]]; do
             FILTERED_ARGS+=("$arg")
             ;;
     esac
-    ((i++))
+    i=$((i + 1))
 done
 
 # Replace $@ with filtered arguments for the rest of the script
