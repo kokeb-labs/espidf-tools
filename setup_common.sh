@@ -494,6 +494,35 @@ idf_dir_matches_version() {
     [[ "$have" == "$want" ]]
 }
 
+# Move an existing checkout to a ref, branch or tag, whether it was cloned in full or shallow (one branch).
+# A fetch with a plain ref name writes only FETCH_HEAD, so the refspecs are explicit: a tag lands in
+# refs/tags, a branch in refs/remotes/origin and the local branch is reset to it. A shallow checkout stays
+# shallow (depth 1, submodules too).
+#   idf_checkout_ref <dir> <ref>
+idf_checkout_ref() {
+    local dir="$1" ref="$2"
+    # Every step checks its own status: callers run this inside `if`, where set -e does nothing.
+    (
+        cd "$dir" || exit 1
+        depth=()
+        if [[ -f "$(git rev-parse --git-dir)/shallow" ]]; then
+            depth=(--depth 1)
+        fi
+        if git ls-remote --exit-code origin "refs/tags/$ref" >/dev/null 2>&1; then
+            git fetch ${depth[@]+"${depth[@]}"} origin "+refs/tags/$ref:refs/tags/$ref" || exit 1
+            git checkout -q "refs/tags/$ref" || exit 1
+        elif git ls-remote --exit-code origin "refs/heads/$ref" >/dev/null 2>&1; then
+            git fetch ${depth[@]+"${depth[@]}"} origin "+refs/heads/$ref:refs/remotes/origin/$ref" || exit 1
+            git checkout -q -B "$ref" "refs/remotes/origin/$ref" || exit 1
+        else
+            echo "ERROR: $ref is neither a tag nor a branch of $(git remote get-url origin)" >&2
+            exit 1
+        fi
+        git submodule sync --recursive || exit 1
+        git submodule update --init --recursive ${depth[@]+"${depth[@]}"} || exit 1
+    )
+}
+
 # Clone (or update) one version into its folder and install its tools for the given targets.
 #   idf_clone_and_install <version> <targets, comma-separated> <shallow: true|false>
 idf_clone_and_install() {
@@ -505,18 +534,7 @@ idf_clone_and_install() {
 
     if [[ -d "$idf_dir/.git" ]]; then
         print_status "ESP-IDF $idf_version already in $idf_dir, updating to $ref..."
-        if ! (
-            set -e
-            cd "$idf_dir"
-            git fetch origin "$ref"
-            git checkout "$ref"
-            # A branch moves on: fast-forward it. A tag stays where it is.
-            if git symbolic-ref -q HEAD >/dev/null; then
-                git pull --ff-only origin "$ref"
-            fi
-            git submodule sync --recursive
-            git submodule update --init --recursive
-        ); then
+        if ! idf_checkout_ref "$idf_dir" "$ref"; then
             print_error "Failed to update ESP-IDF $idf_version in $idf_dir"
             return 1
         fi
@@ -610,6 +628,15 @@ install_esp_idf() {
     fi
 
     print_success "ESP-IDF versions installed/updated"
+}
+
+# Whether two paths are the same folder once symlinks are resolved (a link written with a trailing slash or
+# as a relative name still matches). Fails when either does not exist.
+same_dir() {
+    local a b
+    a=$(cd -P "$1" 2>/dev/null && pwd) || return 1
+    b=$(cd -P "$2" 2>/dev/null && pwd) || return 1
+    [[ "$a" == "$b" ]]
 }
 
 # ESP-IDF install folder for a version: <root>/esp-idf-<version>, with every character other than letters,
@@ -775,7 +802,7 @@ list_esp_idf_versions() {
             local is_default=""
 
             # Check if this is the default symlink
-            if [[ -L "$esp_dir/esp-idf" ]] && [[ "$(readlink "$esp_dir/esp-idf")" == "$dir" ]]; then
+            if [[ -L "$esp_dir/esp-idf" ]] && same_dir "$esp_dir/esp-idf" "$dir"; then
                 is_default=" (default)"
             fi
 

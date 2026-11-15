@@ -16,7 +16,7 @@ reader here parses (see the format rules at the top of idf_versions.yml); with P
 in `check` and must agree.
 
 SPDX-License-Identifier: MIT
-Copyright (c) 2026 The espidf-tools authors
+Copyright (c) 2026 The Kokeb Labs Authors
 """
 
 import argparse
@@ -217,13 +217,16 @@ def safe_names(version):
 # Scope (which versions a CI run builds)
 # ---------------------------------------------------------------------------------------------------------------
 
+# The events of a full run; ci-tools ru-build (idf_scope: auto) uses the same table.
+FULL_EVENTS = ("schedule", "workflow_dispatch", "release", "repository_dispatch")
+
+
 def scope_for_event(event_name, ref=""):
-    """pr for pull requests and branch pushes; full for tags, schedules, manual runs and releases."""
-    if event_name in ("pull_request", "pull_request_target", "merge_group"):
-        return "pr"
-    if event_name == "push":
-        return "full" if (ref or "").startswith("refs/tags/") else "pr"
-    if event_name in ("schedule", "workflow_dispatch", "release", "repository_dispatch"):
+    """full for a tag push and the FULL_EVENTS; pr, the cheap scope, for every other event (pull requests,
+    branch pushes, merge_group, workflow_run, an event this table does not know)."""
+    if event_name == "push" and (ref or "").startswith("refs/tags/"):
+        return "full"
+    if event_name in FULL_EVENTS:
         return "full"
     return "pr"
 
@@ -348,8 +351,8 @@ def main(argv=None):
     p.add_argument("field", choices=list(KEYS) + ["eol"])
 
     p = sub.add_parser("matrix", help="GitHub Actions matrix (JSON) of the versions a scope builds")
-    p.add_argument("--scope", choices=["pr", "full", "all", "auto"], default="auto",
-                   help="auto: from GITHUB_EVENT_NAME and GITHUB_REF (pull requests and branch pushes: pr)")
+    p.add_argument("--scope", choices=["pr", "full", "auto"], default="auto",
+                   help="auto: from GITHUB_EVENT_NAME and GITHUB_REF (see scope); ci: none is never in a matrix")
     p.add_argument("--target", help="only versions supporting this chip, with a target field")
 
     p = sub.add_parser("scope", help="pr or full for a CI event (default: GITHUB_EVENT_NAME, GITHUB_REF)")

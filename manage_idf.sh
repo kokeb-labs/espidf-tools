@@ -139,6 +139,10 @@ resolve_targets() {
 # Warn about a version idf_versions.yml does not know, an end-of-life one, or a target it does not support.
 check_version_and_targets() {
     local version="$1" targets="$2" status supported preview t
+    if ! command -v python3 >/dev/null 2>&1; then
+        print_warning "python3 not found: $version and its targets are not checked against idf_versions.yml"
+        return 0
+    fi
     if ! status=$(idf_versions_cmd get "$version" status 2>/dev/null); then
         print_warning "$version is not in idf_versions.yml: cloning it as a git ref, targets unchecked"
         return 0
@@ -403,7 +407,7 @@ clean_idf_version() {
     local default_link="$esp_dir/esp-idf"
 
     # Check if this is the default version
-    if [[ -L "$default_link" ]] && [[ "$(readlink "$default_link")" == "$idf_dir" ]]; then
+    if [[ -L "$default_link" ]] && same_dir "$default_link" "$idf_dir"; then
         print_warning "Cannot remove default ESP-IDF version"
         print_status "Switch to another version first: ./manage_idf.sh switch <other_version>"
         return 1

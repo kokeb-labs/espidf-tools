@@ -17,9 +17,9 @@ chips, support status) come from [idf_versions.yml](idf-versions.md).
 | `list` | The versions installed under `~/esp` |
 | `export <version>` | Sources that version's `export.sh` in the script's own shell |
 | `switch <version>` | Points the `~/esp/esp-idf` symlink at the version |
-| `update <version>` | Fetches the ref, fast-forwards a branch (a tag stays), updates the submodules, then `install.sh` for the chips as in `install` |
+| `update <version>` | Moves the checkout to the version's ref, also when the ref (a new patch tag, another branch) did not exist at clone time: a tag is fetched into `refs/tags`, a branch into `refs/remotes/origin` and the local branch reset to it. A shallow checkout stays shallow. Then the submodules and `install.sh` for the chips as in `install` |
 | `verify <version>` | Checks the installed version: the folder, the ESP-IDF version in its sources against the name, `export.sh`, and `idf.py --version` after `export.sh` (in a child shell). Exit status 1 when a check fails |
-| `uninstall <version>` | Deletes the version's folder; refuses the default one. `--python-env` also deletes its Python environment under `$IDF_TOOLS_PATH/python_env` unless another installed checkout has the same major.minor. `clean` is the same command |
+| `uninstall <version>` | Deletes the version's folder; refuses the default one (compared after resolving symlinks, so a link written with a trailing slash or as a relative name counts). `--python-env` also deletes its Python environment under `$IDF_TOOLS_PATH/python_env` unless another installed checkout has the same major.minor. `clean` is the same command |
 | `status` | The current ESP-IDF environment, the tools folder and the default |
 
 With no command, or an unknown one, it prints the usage on stderr and exits with status 2; `--help` prints it on
@@ -28,7 +28,7 @@ stdout and exits 0. An option that needs a value and has none (`--project-path`,
 | Option | Commands | Meaning |
 | --- | --- | --- |
 | `--targets <t1,t2>` | `install`, `update` | Chips to install tools for, comma-separated (`install.sh` takes the same list) |
-| `--shallow` | `install`, `update` | Clone only the tip of the ref and of each submodule: about a third of the disk and download. `update` of a shallow branch still fast-forwards |
+| `--shallow` | `install` | Clone only the tip of the ref and of each submodule: about a third of the disk and download. `update` keeps a shallow checkout shallow |
 | `--force` | `install` | Delete and re-clone an existing version |
 | `--python-env` | `uninstall` | Also delete the version's Python environment |
 | `--project-path <path>` | all | The project, when the scripts are not in `<project>/scripts` |

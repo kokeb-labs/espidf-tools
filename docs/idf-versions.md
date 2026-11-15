@@ -27,7 +27,7 @@ versions:
 | `version` | yes | The name `app_config.yml`, the build folders and `manage_idf.sh` use: a release branch (`release/v6.1`) or a tag (`v6.0.3`) |
 | `ref` | no | The git branch or tag cloned; default: `version` |
 | `status` | yes | `service`, `maintenance`, `eol` or `preview` (see [Support periods](#support-periods)) |
-| `ci` | yes | `pr`: built on every CI run; `full`: built on tags, schedules and manual runs only; `none`: never built by CI. Exactly one version is `pr` |
+| `ci` | yes | `pr`: built on every CI run; `full`: built on tags, schedules and manual runs only; `none`: never built by CI in any scope (it can still be installed). Exactly one version is `pr` |
 | `targets` | yes | A target set: the chips the version supports as stable |
 | `preview` | no | A target set: the chips it supports as preview |
 | `released` | yes | The date of the x.y.0 release, quoted: `"2026-08-27"` |
@@ -68,12 +68,18 @@ longer has long-term-support releases: every release gets the same 30 months.
 
 | Scope | When (`auto`) | Versions per app |
 | --- | --- | --- |
-| `pr` | pull requests, pushes to a branch | the app's version with `ci: pr`, else the app's first version |
-| `full` | tags, schedules, manual runs, releases | every version the app lists |
+| `full` | a tag push, `schedule`, `workflow_dispatch`, `release`, `repository_dispatch` | every version the app lists, except those with `ci: none` |
+| `pr` | every other event: pull requests, branch pushes, `merge_group`, `workflow_run`, events not named here | the app's version with `ci: pr`, else its first version without `ci: none` |
+
+An event the table does not name gets the cheap `pr` scope. ci-tools `ru-build` (`idf_scope: auto`) uses the
+same table, and `tests/test_scripts.sh` pins it.
 
 So an app that lists `["release/v5.5", "release/v6.1"]` builds one version on each pull request and both on a
-release tag and on the weekly schedule. `generate_matrix.py` also drops a combination whose `metadata.target` the
-version does not support, with a warning. See [Using in CI](ci.md).
+release tag and on the weekly schedule; a version listed with `ci: none` is never built (a warning says so), and
+an app whose every version is `ci: none` is left out. In a scoped run `generate_matrix.py` also drops a
+combination whose `metadata.target` the version does not support, with a warning, and stops with an error when
+that leaves nothing to build (a typo such as `esp32-c6`). Two spellings of the same version, `release/v5.5` and
+`v5.5.1`, both count as the `ci: pr` version. See [Using in CI](ci.md).
 
 ## idf_versions.py
 

@@ -38,8 +38,8 @@ run builds, so CI minutes stay low without editing each project:
 
 | Run | Scope | ESP-IDF versions per app |
 | --- | --- | --- |
-| Pull request, push to a branch | `pr` | the one with `ci: pr` (else the app's first) |
-| Tag, weekly schedule, manual run | `full` | every version the app lists |
+| Tag push, schedule, manual run, release, repository dispatch | `full` | every version the app lists, except `ci: none` ones |
+| Every other event: pull request, push to a branch, merge queue | `pr` | the one with `ci: pr` (else the app's first without `ci: none`) |
 
 A project that wants the full set on a schedule adds one to its caller workflow:
 

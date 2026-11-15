@@ -377,6 +377,109 @@ test_idf_uninstall_python_env() {
     [ -d "$IDF_TOOLS_PATH/python_env/idf5.5_py3.12_env" ] || fail "5.5 Python env removed"
 }
 
+# A local "esp-idf" repository served over file:// (so --depth works): branch release/v5.5 with tag v5.5.2,
+# each commit with a version.cmake, an install.sh that logs and an export.sh. grow_idf_upstream then adds,
+# after a clone exists, what Espressif adds later: tag v5.5.3 and branch release/v6.1.
+#   make_idf_upstream <bare dir>; grow_idf_upstream <bare dir>
+make_idf_upstream() {
+    local up="$1" work="$1.work"
+    export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+    git init -q "$work"
+    idf_commit() {  # idf_commit <major> <minor> <patch>
+        mkdir -p "$work/tools/cmake"
+        printf 'set(IDF_VERSION_MAJOR %s)\nset(IDF_VERSION_MINOR %s)\nset(IDF_VERSION_PATCH %s)\n' "$1" "$2" "$3" \
+            > "$work/tools/cmake/version.cmake"
+        printf '#!/bin/bash\necho "install.sh $*" >> "${FAKE_INSTALL_LOG:-/dev/null}"\n' > "$work/install.sh"
+        chmod +x "$work/install.sh"
+        : > "$work/export.sh"
+        git -C "$work" add -A && git -C "$work" commit -q -m "v$1.$2.$3"
+    }
+    git -C "$work" checkout -q -b release/v5.5
+    # Two commits before the first tag: a depth-1 clone of v5.5.2 must stay shallow (it would not if the
+    # history it fetched reached the root).
+    idf_commit 5 5 0; idf_commit 5 5 1
+    idf_commit 5 5 2; git -C "$work" tag v5.5.2
+    git clone -q --bare "$work" "$up"
+}
+
+grow_idf_upstream() {
+    local up="$1" work="$1.work"
+    idf_commit 5 5 3; git -C "$work" tag v5.5.3
+    git -C "$work" checkout -q -b release/v6.1
+    idf_commit 6 1 0
+    git -C "$work" checkout -q release/v5.5
+    git -C "$work" push -q "$up" release/v5.5 release/v6.1 v5.5.3
+}
+
+# Point the version release/v5.5 at a ref through a scratch versions file.
+pin_v55() {
+    printf -- '---\ntarget_sets:\n  s: [esp32c6]\nversions:\n  - {version: release/v5.5, ref: %s, status: maintenance, ci: pr, targets: s, released: "2025-07-21"}\n' \
+        "$1" > "$TEST_TMP/versions.yml"
+}
+
+# update moves the checkout: full and shallow clones, tag to tag, tag to branch, branch to tag.
+run_update_moves() {
+    local shallow="$1"
+    export HOME="$TEST_TMP"
+    make_idf_upstream "$TEST_TMP/up.git"
+    export ESP_IDF_GIT_URL="file://$TEST_TMP/up.git" IDF_VERSIONS_FILE="$TEST_TMP/versions.yml"
+    local dir="$HOME/esp/esp-idf-release-v5.5" out ref want
+    pin_v55 v5.5.2
+    out=$("$ROOT/manage_idf.sh" install release/v5.5 $shallow 2>&1) || fail "install failed: $out" || return 1
+    assert_eq "$(git -C "$dir" rev-parse HEAD)" "$(git -C "$TEST_TMP/up.git" rev-parse "v5.5.2^{commit}")" || return 1
+    grow_idf_upstream "$TEST_TMP/up.git"
+    for ref in v5.5.3 release/v6.1 v5.5.2 release/v5.5; do
+        pin_v55 "$ref"
+        out=$("$ROOT/manage_idf.sh" update release/v5.5 2>&1) || fail "update to $ref failed: $out" || return 1
+        want=$(git -C "$TEST_TMP/up.git" rev-parse "$ref^{commit}")
+        assert_eq "$(git -C "$dir" rev-parse HEAD)" "$want" || { echo "    after update to $ref"; return 1; }
+    done
+    if [ -n "$shallow" ]; then
+        [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/shallow" ] || fail "the shallow checkout became a full one"
+    fi
+}
+
+test_idf_update_moves_full_clone() {
+    run_update_moves ""
+}
+
+test_idf_update_moves_shallow_clone() {
+    run_update_moves "--shallow"
+}
+
+test_idf_update_unknown_ref_fails() {
+    export HOME="$TEST_TMP"
+    make_idf_upstream "$TEST_TMP/up.git"
+    export ESP_IDF_GIT_URL="file://$TEST_TMP/up.git" IDF_VERSIONS_FILE="$TEST_TMP/versions.yml"
+    pin_v55 v5.5.2
+    "$ROOT/manage_idf.sh" install release/v5.5 >/dev/null 2>&1 || fail "install failed" || return 1
+    pin_v55 v9.9.9
+    local out
+    if out=$("$ROOT/manage_idf.sh" update release/v5.5 2>&1); then
+        fail "update to a missing ref succeeded"
+        return 1
+    fi
+    assert_contains "$out" "v9.9.9 is neither a tag nor a branch"
+}
+
+test_idf_uninstall_refuses_default_through_any_link() {
+    # The default symlink as people write it by hand: with a trailing slash, or relative.
+    export HOME="$TEST_TMP"
+    local link out
+    for link in "$HOME/esp/esp-idf-release-v5.5/" "esp-idf-release-v5.5" "./esp-idf-release-v5.5/"; do
+        rm -rf "$HOME/esp"
+        mkdir -p "$HOME/esp/esp-idf-release-v5.5"
+        ln -s "$link" "$HOME/esp/esp-idf"
+        if "$ROOT/manage_idf.sh" uninstall release/v5.5 >/dev/null 2>&1; then
+            fail "uninstall of the default succeeded through the link '$link'"
+            return 1
+        fi
+        [ -d "$HOME/esp/esp-idf-release-v5.5" ] || fail "default removed through '$link'" || return 1
+        out=$("$ROOT/manage_idf.sh" list 2>&1)
+        assert_contains "$out" "release/v5.5 (default)" || { echo "    link '$link'"; return 1; }
+    done
+}
+
 test_idf_helpers_major_minor() {
     local out
     out=$(bash -c 'source "$1/setup_common.sh"
@@ -430,12 +533,17 @@ test_versions_file_status_warning() {
 }
 
 test_versions_scope_for_events() {
-    local v="python3 $ROOT/idf_versions.py scope"
-    assert_eq "$($v --event pull_request --ref refs/pull/1/merge)" "pr" || return 1
-    assert_eq "$($v --event push --ref refs/heads/main)" "pr" || return 1
-    assert_eq "$($v --event push --ref refs/tags/v1.2.0)" "full" || return 1
-    assert_eq "$($v --event schedule)" "full" || return 1
-    assert_eq "$($v --event workflow_dispatch)" "full"
+    # The table ci-tools ru-build (idf_scope: auto) also uses; an event it does not name gets pr.
+    local v="python3 $ROOT/idf_versions.py scope" row event ref want
+    for row in "pull_request refs/pull/1/merge pr" "pull_request_target refs/heads/main pr" \
+        "push refs/heads/main pr" "push refs/tags/v1.2.0 full" "merge_group refs/heads/gh-readonly pr" \
+        "workflow_run refs/heads/main pr" "issue_comment refs/heads/main pr" "schedule refs/heads/main full" \
+        "workflow_dispatch refs/heads/main full" "release refs/tags/v1.2.0 full" \
+        "repository_dispatch refs/heads/main full" "some_new_event refs/heads/main pr"; do
+        set -- $row
+        event=$1 ref=$2 want=$3
+        assert_eq "$($v --event "$event" --ref "$ref")" "$want" || { echo "    event $event"; return 1; }
+    done
 }
 
 test_versions_matrix_scopes() {
@@ -456,38 +564,68 @@ matrix_rows() {
     python3 -c '
 import json, sys
 for e in json.load(sys.stdin)["include"]:
-    print(e["app_name"], e["idf_version"], e["idf_ref"], e["build_type"])'
+    print(e["app_name"], e["idf_version"], e.get("idf_ref", "-"), e["build_type"])'
+}
+
+# The output of espidf-tools 1.0.0 (generate_matrix.py at d8df089) for make_project's app_config.yml.
+MATRIX_1_0_0='{"include": [{"idf_version": "release/v5.5", "idf_version_docker": "release-v5.5", "idf_version_file": "release_v5_5", "build_type": "Debug", "app_name": "gpio_test", "target": "esp32c6", "config_source": "global"}, {"idf_version": "release/v5.5", "idf_version_docker": "release-v5.5", "idf_version_file": "release_v5_5", "build_type": "Release", "app_name": "gpio_test", "target": "esp32c6", "config_source": "global"}, {"idf_version": "release/v5.4", "idf_version_docker": "release-v5.4", "idf_version_file": "release_v5_4", "build_type": "Debug", "app_name": "gpio_test", "target": "esp32c6", "config_source": "global"}, {"idf_version": "release/v5.4", "idf_version_docker": "release-v5.4", "idf_version_file": "release_v5_4", "build_type": "Release", "app_name": "adc_test", "target": "esp32c6", "config_source": "app"}]}'
+
+test_matrix_default_is_exactly_1_0_0() {
+    need_pyyaml
+    make_project "$TEST_TMP/proj"
+    assert_eq "$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>&1)" "$MATRIX_1_0_0" || return 1
+    # Nor does a target the versions file does not know change it: no scope, no filtering.
+    sed -i.bak 's/target: "esp32c6"/target: "esp32s31"/' "$TEST_TMP/proj/app_config.yml"
+    assert_eq "$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>/dev/null | tr -d ' ' | grep -o esp32s31 | wc -l | tr -d ' ')" "4"
 }
 
 test_matrix_ci_scope_pr_and_full() {
     need_pyyaml
     make_project "$TEST_TMP/proj"
-    local pr full
-    pr=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope pr | matrix_rows)
-    full=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope full | matrix_rows)
-    # gpio_test lists v5.5 (ci: pr) and v5.4: pull requests build v5.5 only. adc_test lists only v5.4: its first.
+    # gpio_test: release/v5.5 (ci: pr) and release/v6.1 (ci: full); adc_test: only release/v5.4 (ci: none).
+    sed -i.bak 's#\["release/v5.5", "release/v5.4"\]#["release/v5.5", "release/v6.1"]#' "$TEST_TMP/proj/app_config.yml"
+    local pr full all err
+    pr=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope pr 2>/dev/null | matrix_rows)
+    full=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope full 2>/dev/null | matrix_rows)
+    all=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" | matrix_rows)
+    err=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope full 2>&1 >/dev/null)
     assert_eq "$pr" "gpio_test release/v5.5 release/v5.5 Debug
-gpio_test release/v5.5 release/v5.5 Release
-adc_test release/v5.4 release/v5.4 Release" || return 1
+gpio_test release/v5.5 release/v5.5 Release" || return 1
     assert_eq "$full" "gpio_test release/v5.5 release/v5.5 Debug
 gpio_test release/v5.5 release/v5.5 Release
-gpio_test release/v5.4 release/v5.4 Debug
-adc_test release/v5.4 release/v5.4 Release" || return 1
-    assert_eq "$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" | matrix_rows)" "$full"
+gpio_test release/v6.1 release/v6.1 Debug" || return 1
+    assert_contains "$err" "release/v5.4 has ci: none in idf_versions.yml: not built" || return 1
+    # No scope: every listed version, ci: none included, no new fields (the 1.0.0 output).
+    assert_eq "$all" "gpio_test release/v5.5 - Debug
+gpio_test release/v5.5 - Release
+gpio_test release/v6.1 - Debug
+adc_test release/v5.4 - Release"
+}
+
+test_matrix_pr_falls_back_to_first_buildable_version() {
+    need_pyyaml
+    make_project "$TEST_TMP/proj"
+    # adc_test lists v5.4 (ci: none) first, then v6.1 (ci: full): a pull request builds v6.1, never v5.4.
+    sed -i.bak 's#idf_versions: \["release/v5.4"\]#idf_versions: ["release/v5.4", "release/v6.1"]#' \
+        "$TEST_TMP/proj/app_config.yml"
+    local pr
+    pr=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope pr 2>/dev/null | matrix_rows | grep adc_test)
+    assert_eq "$pr" "adc_test release/v6.1 release/v6.1 Release"
 }
 
 test_matrix_ci_scope_auto_and_unsupported_target() {
     need_pyyaml
     make_project "$TEST_TMP/proj"
-    local out err
+    local out err status=0
     out=$(GITHUB_EVENT_NAME=pull_request python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope auto \
-        | matrix_rows | wc -l | tr -d ' ')
-    assert_eq "$out" "3" || return 1
-    sed -i.bak 's/target: "esp32c6"/target: "esp32s31"/' "$TEST_TMP/proj/app_config.yml"
-    err=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>&1 >/dev/null)
-    out=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" 2>/dev/null | matrix_rows)
-    assert_eq "$out" "" || return 1
-    assert_contains "$err" "esp32s31 is not a target of release/v5.5"
+        2>/dev/null | matrix_rows | wc -l | tr -d ' ')
+    assert_eq "$out" "2" || return 1
+    # A target no listed version supports empties the matrix: a clear error, not an empty matrix.
+    sed -i.bak 's/target: "esp32c6"/target: "esp32-c6"/' "$TEST_TMP/proj/app_config.yml"
+    err=$(python3 "$ROOT/generate_matrix.py" -p "$TEST_TMP/proj" --ci-scope full 2>&1 >/dev/null) || status=$?
+    assert_eq "$status" "1" || return 1
+    assert_contains "$err" "esp32-c6 is not a target of release/v5.5" || return 1
+    assert_contains "$err" "no buildable ESP-IDF version for target 'esp32-c6'"
 }
 
 test_scripts_are_bash32_portable() {
